@@ -1,0 +1,24 @@
+% ---------------------------------------------------------------
+% Reflection
+% Lessons learnt; what we would do differently; potential
+% improvements. Identifying problems in our own architecture is
+% encouraged --- no marks lost.
+% ---------------------------------------------------------------
+\section{Reflection}
+\label{sec:reflection}
+
+Building TicketTailor left several practical lessons about keeping a modular project clean, managing data across a cache and a database, and why keeping the notification worker away from the database was worth the trade-offs.
+
+\subsection{What Was Learned}
+
+\textbf{Setting clear boundaries between modules pays off.} Each module was given its own database tables, and no module was allowed to directly access another module's data. Import Linter checked this in CI. At first this felt like extra work -- even a simple check like "does this club exist?" required a shared callback instead of a direct database join (ADR-0015). But in the end the discipline proved its worth. Each module could be understood on its own, and any module could be split into its own service if needed. This same choice would be made again.
+
+\textbf{The order of cache and database updates matters.} The RSVP counter lives in Redis but PostgreSQL is the source of truth. Committing the database write \textit{before} updating the cache is essential. If the database commit fails after the cache has been updated, a wrong count results that the nightly cleanup has to fix. Getting the order right -- insert, commit, then increment -- was simple but prevented a lot of headaches.
+
+\textbf{Serverless is great until hitting a connection limit.} The notification worker was first planned to look up recipient details in the database. Then it became clear that sending 1000 notifications could start hundreds of Lambda functions at once, each grabbing a database connection. Moving the work of finding recipients and preparing messages to the relay (ADR-0016) kept the worker away from the database. This was one of the better decisions in the project: it avoided a problem before it happened.
+
+\subsection{What Would Be Done Differently}
+
+\textbf{Clean up old push subscriptions automatically.} The worker cannot reach the database, so when a push service reports a dead subscription (a \texttt{410 Gone} error), the worker can only log it. Those dead subscriptions pile up over time. With hindsight, a way for the worker to report back would be added: it sends a cleanup event to SQS, and the relay or API picks it up and removes the stale row from the database.
+
+\textbf{Group counter updates instead of saving each RSVP one by one.} The load test showed RSVP writes at 410~ms p99, above the 200~ms target (Section~\ref{sec:evaluation}). Every RSVP gets written to PostgreSQL immediately, which is the bottleneck. With hindsight, counter changes would be kept in Redis and written to the database in batches, instead of saving each one individually. This would risk losing a small amount of data if Redis crashed, but the nightly cleanup would catch it, and writes would be much faster.

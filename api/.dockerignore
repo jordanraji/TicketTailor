@@ -1,0 +1,14 @@
+# Keep the build context small and reproducible. Source (src/) and the lockfile
+# must NOT be excluded - the image needs them for the editable install and
+# migrations.
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.env
+.env.*
+.git/
+.gitignore

@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 4: Visibility Transition
+#  ADR-0010: Visibility transition folded into outbox relay
+#  ADR-0006: Transactional outbox
+#  ASR: Reliability
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-04: Visibility Transition (club-only → public)" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants ──────────────────────────────────────────────────
+
+relay: "Outbox Relay\n[Python / asyncio - ECS Fargate]" {
+  style.fill: "#ffe6cc"
+  style.stroke: "#d79b00"
+}
+postgres: "PostgreSQL" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+sns: "SNS" {
+  style.fill: "#f8cecc"
+  style.stroke: "#b85450"
+}
+sqs: "SQS" {
+  style.fill: "#f8cecc"
+  style.stroke: "#b85450"
+}
+worker: "Notification Worker\n(Lambda)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+email_provider: "Resend" {
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+}
+
+# ── Notes ─────────────────────────────────────────────────────────
+
+relay.two_query_note: "Two-query tick (ADR-0010):\n1. Visibility mutation\n2. Outbox publish\nBoth queries in same poll loop"
+
+postgres.atomic_note: "UPDATE visibility + INSERT outbox\nin ONE transaction - if relay crashes\nbetween ticks, next tick retries safely"
+
+postgres.lock_note: "FOR UPDATE SKIP LOCKED\nAllows multiple relay replicas\nwithout duplicate processing"
+
+# ── Part A: Relay tick - mutation ────────────────────────────────
+
+mutation: "A - Relay Tick: Visibility Mutation" {
+  relay.tick -> postgres.flip: "1. BEGIN TRANSACTION\n   UPDATE events SET visibility='public'\n   WHERE visibility='club_only'\n   AND transition_at <= now()\n   RETURNING id, club_id"
+  postgres.flip -> relay.tick: "2. flipped event rows"
+  relay.tick -> postgres.flip: "3. INSERT INTO outbox\n   (type='visibility_changed')\n   for each flipped event"
+  relay.tick -> postgres.flip: "4. COMMIT"
+}
+
+# ── Part B: Relay tick - publish ─────────────────────────────────
+
+publish: "B - Relay Tick: Outbox Publish & Fan-out" {
+  relay.pub -> postgres.read: "5. SELECT outbox WHERE published_at IS NULL\n   FOR UPDATE SKIP LOCKED"
+  postgres.read -> relay.pub: "6. unpublished rows (incl. visibility_changed)"
+  relay.pub -> postgres.read: "7. Resolve followers_for_club(club_id)\n   + contact_details_for(follower_ids)\n   [Reads follows, users, push_subscriptions]"
+  postgres.read -> relay.pub: "8. list[RecipientContact] (emails, display names, push keys)"
+  relay.pub -> sns.fanout: "9. For each follower:\n   Publish visibility_changed\n   { id, event_title, recipient: { email, name, push } }"
+  relay.pub -> postgres.read: "10. UPDATE outbox SET published_at = now()\n    (committed after all publishes succeed)"
+}
+
+# ── Part C: Worker delivery ───────────────────────────────────────
+
+fanout: "C - Worker Delivery (per-recipient message)" {
+  sns.fanout -> sqs.queue: "11. Fan-out to SQS Notifications"
+  sqs.queue -> worker.handle: "12. SQS triggers Lambda with single-recipient message"
+  worker.handle -> email_provider.send: "13. Send email to recipient (database-free)"
+  email_provider.send -> worker.handle: "14. 200 OK" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+}
+

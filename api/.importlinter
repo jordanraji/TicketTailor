@@ -1,0 +1,14 @@
+[importlinter]
+root_package = tickettailor
+
+[importlinter:contract:modular-layers]
+name = Modular Monolith Layers
+type = layers
+layers =
+    tickettailor.calendar
+    tickettailor.rsvp
+    tickettailor.events
+    tickettailor.organisers
+    tickettailor.auth
+    tickettailor.users
+    tickettailor.shared

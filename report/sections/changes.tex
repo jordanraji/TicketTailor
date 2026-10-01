@@ -1,0 +1,29 @@
+% ---------------------------------------------------------------
+% Changes
+% Differences between the original proposal and what was delivered.
+% Small changes: brief one-liner. Significant changes (scope, key
+% quality attributes): detailed rationale.
+% ---------------------------------------------------------------
+\section{Project Scope Changes and Design Adjustments}
+\label{sec:changes}
+
+During the development and testing cycle, several adjustments were made to the original project proposal. These changes were driven by the need to safeguard database resources, adapt to assessment environment constraints, simplify deployment in the learner lab, and ensure local testing reproducibility.
+
+\subsection{Summary of Changes}
+The following modifications were made to the proposed design:
+\begin{itemize}
+    \item \textbf{Migration of Notification Worker to AWS Lambda (ADR-0002):} Originally planned as a continuously running ECS Fargate task, the notification worker was migrated to an AWS Lambda function triggered by SQS Event Source Mapping. This avoids paying for idle compute resources, scales compute down to zero when there are no notifications, and scales out dynamically to process fan-outs concurrently in response to SQS queue depth.
+    \item \textbf{Folding the Scheduled Visibility Transition (ADR-0010):} Rather than deploying an independent scheduled Lambda function and EventBridge trigger rule to transition event visibility from club-only to public, this scheduled logic was folded directly into the Outbox Relay daemon. In every tick, the relay runs a sequential transactional query: it flips due club-only events to public and adds the \texttt{visibility\_changed} rows to the outbox table, improving the scheduling resolution from minutes to seconds.
+    \item \textbf{Relay-Side Recipient Resolution and Hydration (ADR-0016):} The task of resolving club followers and event attendees, as well as hydrating their contact details (emails and VAPID push keys), was shifted to the Outbox Relay. The notification worker was kept database-free and stateless, receiving pre-hydrated payloads from SQS. The relay queries the database (via service module boundaries) to resolve followers or RSVP attendees, fanning out one fully hydrated message per recipient to SQS. This protects the database connection pool from being exhausted if hundreds of Lambda instances spin up concurrently during a burst.
+    \item \textbf{Frontend Framework Shift to Next.js Static Export (ADR-0018):} Originally proposed as a React 18 + Vite + TypeScript SPA, the frontend was migrated to Next.js with a static HTML export to utilise layouts and Tailwind configurations built in a frontend prototype. To maintain S3 + CloudFront static CDN hosting and the JSON-API contract, the Next.js bundle is built as static files. Dynamic segment routes (like \texttt{events/[id]}) were refactored into client-side query-parameter pages (like \texttt{events/detail?id=...}), and the TypeScript strict checking was deferred to hit the project deadline.
+    \item \textbf{Email Provider Swap to Resend and Mailpit (ADR-0012):} The email transport was changed from AWS Simple Email Service (SES) to Resend (via REST API) for the deployed sandbox. Locally, Mailpit was integrated as a local SMTP capture sink in the Docker Compose environment. This ensures that load testing or manual runs do not consume commercial email quotas or send real emails to fake test addresses.
+\end{itemize}
+
+\subsection{Justification and Impact}
+These design changes did not affect the core functional requirements of the Minimum Viable Product (MVP), but they significantly improved the system's quality attributes:
+
+\begin{itemize}
+    \item \textbf{Reduction in Deployable Units (Operational Simplicity):} Folding the visibility cron into the Outbox Relay and using static HTML exports served from Amazon S3 reduced the number of active running containers in the cloud. The backend architecture was kept to exactly three deployable units (API, Outbox Relay, and Notification Lambda), simplifying the Terraform code and lowering runtime infrastructure overhead.
+    \item \textbf{Database Connection Protection (Scalability and Reliability):} Moving recipient hydration to the Outbox Relay was critical to prevent connection exhaustion. In the original design, the Lambda worker would query PostgreSQL to retrieve recipient details. Under a burst of 1000 notifications, hundreds of concurrent Lambda instances would spin up, instantly saturating the relational database's connection pool. By keeping the worker database-free, it runs as pure stateless compute, protecting database availability for client-facing API requests.
+    \item \textbf{Adaptation to Academic Cloud Constraints (Security and Privacy):} UQ assessment policies restricted the use of AWS SES. Swapping to Resend allowed the project to execute real email alerts under sandbox limits without AWS credit card verification or sandbox request limits. Additionally, Mailpit catches all SMTP traffic locally, preventing real email blasts during heavy automated load tests.
+\end{itemize}

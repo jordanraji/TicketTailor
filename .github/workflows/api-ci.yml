@@ -1,0 +1,40 @@
+name: API CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    name: lint · type-check · module-boundary · tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies (locked)
+        run: uv sync --frozen
+
+      - name: Module boundaries (import-linter)
+        run: uv run lint-imports
+
+      - name: Lint (ruff)
+        run: uv run ruff check
+
+      - name: Type check (mypy, strict)
+        run: uv run mypy -p tickettailor
+
+      - name: Tests (pytest)
+        # Exit 5 = no tests collected yet; treat as pass until the first test lands.
+        run: uv run pytest || [ $? -eq 5 ]

@@ -1,0 +1,32 @@
+name: Render D2 Diagrams
+
+on:
+  push:
+    paths:
+      - '**.d2'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install D2
+        run: |
+          curl -fsSL https://d2lang.com/install.sh | sh -s --
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Render Diagrams
+        run: |
+          find . -name "*.d2" | while read f; do
+            d2 --layout=elk "$f" "$(dirname "$f")/$(basename "$f" .d2).svg"
+          done
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: diagrams rendered [skip ci]"
+          file_pattern: "**/*.svg"

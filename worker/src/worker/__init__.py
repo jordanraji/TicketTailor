@@ -1,0 +1,1 @@
+# TicketTailor Notification Worker package

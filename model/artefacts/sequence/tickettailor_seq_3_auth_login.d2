@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 3: Login / Auth Flow
+#  ADR-0009: argon2id, JWT, httpOnly cookies, token rotation
+#  ASR: Security
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-03: Login / Auth Flow" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants ──────────────────────────────────────────────────
+
+user: "User" {
+  shape: person
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+spa: "Next.js SPA" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+api: "Backend API\n(Auth Module)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+postgres: "PostgreSQL" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+
+# ── Notes ─────────────────────────────────────────────────────────
+
+api.argon_note: "argon2id.verify(hash, password)\nMemory-hard - resistant to GPU attacks\n(ADR-0009: preferred over bcrypt)"
+
+api.token_note: "Access token: JWT, 15 min TTL - in memory only\nRefresh token: httpOnly + Secure + SameSite=Strict\nNever stored in localStorage"
+
+# ── Part A: Login ─────────────────────────────────────────────────
+
+login: "A - Login" {
+  user.action -> spa.form: "1. Submit { email, password }"
+  spa.form -> api.auth: "2. POST /auth/login"
+  api.auth -> postgres.query: "3. SELECT hashed_password FROM users\n   WHERE email = :email"
+  postgres.query -> api.auth: "4. { id, hashed_password, role }"
+  api.auth -> api.auth: "5. argon2id.verify(hashed_password, password)"
+  api.auth -> postgres.query: "6. INSERT INTO refresh_tokens\n   (token_hash, user_id, expires_at)"
+  postgres.query -> api.auth: "7. OK"
+  api.auth -> spa.form: "8. 200 OK { access_token }\n   Set-Cookie: refresh_token\n   [httpOnly; Secure; SameSite=Strict]"
+  spa.form -> spa.form: "9. Store access_token in memory only"
+}
+
+# ── Part B: Token Refresh ─────────────────────────────────────────
+
+refresh: "B - Token Refresh (access token expired)" {
+  spa.expired -> api.refresh: "10. POST /auth/refresh\n    Cookie: refresh_token=..."
+  api.refresh -> postgres.tokens: "11. SELECT + validate refresh token\n    DELETE old token\n    INSERT new token [rotation]"
+  postgres.tokens -> api.refresh: "12. OK"
+  api.refresh -> spa.expired: "13. 200 OK { new_access_token }\n    Set-Cookie: new_refresh_token"
+}

@@ -1,0 +1,92 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 5: Browse Events (Geo Query)
+#  ADR-0003: Python + FastAPI + PostGIS
+#  ADR-0008: Read replica routing
+#  ASR: Scalability
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-05: Browse Events - Geo Query" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants ──────────────────────────────────────────────────
+
+user: "Student" {
+  shape: person
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+spa: "Next.js SPA\n(MapLibre GL)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+api: "Backend API\n(Events Module)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+redis: "Redis\n(cache)" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+replica: "PostgreSQL\n(read replica)" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+
+# ── Notes ─────────────────────────────────────────────────────────
+
+replica.geo_note: "ST_DWithin uses GIST(location) index\nO(log n) spatial lookup\nST_Distance returns metres for map markers"
+
+redis.cache_note: "Cache key: hash(lat, lng, radius, filters)\nTTL: 30s - short enough for near-realtime\nRoutes to read replica on MISS (ADR-0008)"
+
+api.privacy_note: "Coordinates rounded to ~100m precision\nfor public events (ADR-0009 privacy tactic)"
+
+# ── Flow ──────────────────────────────────────────────────────────
+
+user -> spa.map: "1. Open map / pan / apply filters"
+spa.map -> spa.map: "2. Read GPS or use campus coordinates"
+spa.map -> api.handle: "3. GET /events\n   ?lat=&lng=&radius_m=2000\n   &category=social&visibility=public"
+api.handle -> api.handle: "4. Validate GeoFilter (Pydantic v2)\n   Clamp radius_m ≤ 50000"
+api.handle -> redis.lookup: "5. GET cache:{hash(filters)}"
+
+cache_hit: "[HIT] Load cached IDs + fetch fresh details" {
+  redis.lookup -> api.handle: "6a. HIT - list of (event_id, distance_m)" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+  api.handle -> replica.query: "7a. SELECT id, title, lat, lng...\n    FROM events WHERE id IN (:ids)"
+  replica.query -> api.handle: "8a. event rows" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+  api.handle -> api.handle: "9a. Sort events by cached distances"
+  api.handle -> spa.map: "10a. 200 OK [ { id, title, lat, lng,\n    distance_m } ]" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+}
+
+cache_miss: "[MISS] Query read replica" {
+  redis.lookup -> api.handle: "6b. MISS - query read replica" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+  api.handle -> replica.query: "7b. SELECT id, title, lat, lng,\n   ST_Distance(location, point) AS distance_m\n   FROM events\n   WHERE ST_DWithin(location, point, radius_m)\n   AND visibility = 'public'\n   ORDER BY distance_m ASC LIMIT 100"
+  replica.query -> api.handle: "8b. event rows ordered by distance" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+  api.handle -> redis.lookup: "9b. SET cache:{hash} EX 30"
+  api.handle -> api.handle: "10b. Round coordinates to ~100m precision"
+  api.handle -> spa.map: "11b. 200 OK [ { id, title, lat, lng,\n    distance_m, attendee_count } ]" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+}
+spa.map -> spa.map: "12. Render markers on map\n    cluster at low zoom"
+spa.map -> user: "13. Tap marker → event detail card"

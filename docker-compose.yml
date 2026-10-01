@@ -1,0 +1,103 @@
+# TicketTailor local development stack.
+#
+#   db      - PostgreSQL + PostGIS primary (same image as api/conftest.py)
+#   cache   - Redis: RSVP atomic counter (ADR-0005) + short-lived caches
+#   mailpit - local SMTP sink + web UI (ADR-0012)
+#   api     - modular-monolith API; runs migrations on start, then serves
+#   relay   - outbox relay: FR5 transition + outbox publish (ADR-0006/0010);
+#             uses the logging publisher locally
+#
+# Usage: docker compose up --build
+#   API      → http://localhost:8000  (docs at /docs, health at /healthz)
+#   Mailpit  → http://localhost:8025
+#
+# The read replica is collapsed onto the primary locally (DATABASE_REPLICA_URL
+# points at db); a real replica only exists when deployed.
+
+name: tickettailor
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tickettailor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tickettailor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cache:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # web UI
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/tickettailor
+      DATABASE_REPLICA_URL: postgresql+asyncpg://postgres:postgres@db:5432/tickettailor
+      REDIS_URL: redis://cache:6379/0
+      SECRET_KEY: super-secret-dev-key-change-me-in-production
+      EMAIL_PROVIDER: smtp
+      EMAIL_FROM_ADDRESS: noreply@tickettailor.local
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  relay:
+    build:
+      # Repo root: the relay image needs both the relay/ and api/ trees (the
+      # relay has an editable path dependency on the api package).
+      context: .
+      dockerfile: relay/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      # Wait for the API so the schema migrations it runs on start are applied
+      # before the relay begins polling the outbox/events tables.
+      api:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/tickettailor
+      DATABASE_REPLICA_URL: postgresql+asyncpg://postgres:postgres@db:5432/tickettailor
+      RELAY_POLL_INTERVAL_SECONDS: "1.0"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

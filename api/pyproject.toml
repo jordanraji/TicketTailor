@@ -1,0 +1,72 @@
+[project]
+name = "tickettailor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.4",
+    "argon2-cffi>=25.1.0",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.136.3",
+    "geoalchemy2>=0.20.0",
+    "greenlet>=3.5.1",
+    "icalendar>=7.1.2",
+    "pydantic[email,timezone]>=2.0",
+    "pyjwt>=2.10.0",
+    "python-dotenv>=1.2.2",
+    "redis>=8.0.0",
+    "sqlalchemy>=2.0",
+    "uvicorn>=0.48.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.8.0",
+    "httpx>=0.28.0",
+    "import-linter>=2.11",
+    "mypy>=2.1.0",
+    "pip-audit>=2.7.0",
+    "pre-commit>=3.7.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.15",
+    "schemathesis>=4.21.0",
+    "testcontainers[postgres]>=4.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP", "N"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/versions/*.py" = ["E501"]
+
+[tool.bandit]
+# Tests live alongside source; assert-based tests legitimately use `assert`
+# (B101), so exclude test directories from SAST scanning.
+exclude_dirs = ["src/tickettailor/auth/tests", "src/tickettailor/users/tests", "src/tickettailor/organisers/tests", "src/tickettailor/rsvp/tests", "src/tickettailor/events/tests", "src/tickettailor/calendar/tests", "src/tickettailor/tests"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+python_version = "3.12"
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["src"]
+addopts = "--import-mode=importlib"
+
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tickettailor"]

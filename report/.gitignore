@@ -1,0 +1,9 @@
+# LaTeX build artifacts. figures/*.pdf is committed (used by the document);
+# the compiled report is built by CI (see .github/workflows/report.yml) or
+# locally with latexmk.
+main.pdf
+*.fls
+*.synctex.gz
+*.bbl
+*.blg
+*.fdb_latexmk

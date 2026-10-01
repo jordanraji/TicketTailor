@@ -1,0 +1,23 @@
+# Build context for the relay image is the repo root (it needs both relay/ and
+# api/ for the editable path dependency). Keep that context lean: exclude
+# virtualenvs, caches, and anything not needed to install the packages.
+**/.venv/
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.import_linter_cache/
+**/.env
+**/.env.*
+.git/
+.gitignore
+
+# Trees the relay image never needs.
+web/
+infra/
+report/
+model/
+docs/
+tests/
+demo.md

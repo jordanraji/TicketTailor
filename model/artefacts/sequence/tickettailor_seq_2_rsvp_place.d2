@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 2: RSVP Place (Detailed)
+#  ADR-0005: Atomic Redis counter
+#  ADR-0006: Transactional outbox
+#  ASR: Scalability (race condition), Reliability
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-02: RSVP Place (Detailed)" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants ──────────────────────────────────────────────────
+
+spa: "Next.js SPA" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+api: "Backend API\n(RSVP Module)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+redis: "Redis" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+postgres: "PostgreSQL" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+relay: "Outbox Relay" {
+  style.fill: "#ffe6cc"
+  style.stroke: "#d79b00"
+}
+worker: "Notification Worker\n(Lambda)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+
+# ── Notes ─────────────────────────────────────────────────────────
+
+postgres.idem_note: "Idempotency = (user_id, event_id) UNIQUE.\nPre-insert existence check returns 409 on a\nduplicate; a concurrent insert that loses the\nunique constraint is also translated to 409.\nRedis SET-NX idempotency gate deferred (ADR-0005)."
+
+redis.counter_note: "INCR rsvp:count:{event_id}\nAtomic - single-threaded Redis\nNo race condition under burst load"
+
+postgres.txn_note: "RSVP row + outbox row\ncommitted atomically.\nIf TX rolls back, no orphan event."
+
+# ── Sync Path ─────────────────────────────────────────────────────
+
+sync: "Synchronous Path - Request / Response" {
+  spa.req -> api.handle: "1. POST /events/{id}/rsvp\n   Authorization: Bearer <JWT>"
+  api.handle -> postgres.idem: "2. SELECT existing RSVP\n   WHERE (user_id, event_id)"
+  postgres.idem -> api.handle: "3. none - or existing (duplicate → 409 Conflict)"
+  api.handle -> postgres.txn: "4. BEGIN TRANSACTION\n   INSERT rsvps (user_id, event_id)\n   INSERT outbox (rsvp.placed)\n   [UNIQUE violation on concurrent dup → 409]"
+  postgres.txn -> api.handle: "5. COMMIT"
+  api.handle -> redis.counter: "6. INCR rsvp:count:{event_id}\n   (after commit)"
+  redis.counter -> api.handle: "7. new_count (e.g. 42)"
+  api.handle -> spa.req: "8. 201 Created { attendee_count: 42 }"
+}
+
+# ── Async Path ────────────────────────────────────────────────────
+
+async: "Asynchronous Path - Notification Fan-out" {
+  relay.tick -> postgres.read: "9. Poll outbox WHERE published_at IS NULL\n   FOR UPDATE SKIP LOCKED"
+  postgres.read -> relay.tick: "10. { type: rsvp.placed, ... }"
+  relay.tick -> worker.notify: "11. SNS → SQS → Lambda trigger"
+  worker.notify -> worker.notify: "12. Send confirmation email\n    to RSVP'd user"
+}

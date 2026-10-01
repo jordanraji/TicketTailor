@@ -1,0 +1,35 @@
+aiohappyeyeballs==2.6.2
+aiohttp==3.14.0
+aiosignal==1.4.0
+annotated-types==0.7.0
+anyio==4.13.0
+attrs==26.1.0
+aws-lambda-powertools==3.29.0
+certifi==2026.5.20
+cffi==2.0.0 ; platform_python_implementation != 'PyPy'
+charset-normalizer==3.4.7
+cryptography==48.0.0
+dnspython==2.8.0
+email-validator==2.3.0
+frozenlist==1.8.0
+h11==0.16.0
+http-ece==1.2.1
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.17
+jmespath==1.1.0
+multidict==6.7.1
+propcache==0.5.2
+py-vapid==1.9.4
+pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pydantic-core==2.46.4
+pydantic-settings==2.14.1
+pydantic==2.13.4
+python-dotenv==1.2.2
+pywebpush==2.3.0
+requests==2.34.2
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+tzdata==2026.2 ; sys_platform == 'win32'
+urllib3==2.7.0
+yarl==1.24.2

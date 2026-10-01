@@ -1,0 +1,121 @@
+# Pre-commit configuration running the API and relay CI checks locally.
+# Refer to `.github/workflows/api-ci.yml` and `.github/workflows/relay-ci.yml`
+# for CI synchronization. Hooks are scoped by path (`files:`) so each deployable
+# is only checked when its own files change.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: bash -c "cd api && uv run ruff format --check"
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      - id: ruff-lint
+        name: ruff lint
+        entry: bash -c "cd api && uv run ruff check"
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      - id: import-linter
+        name: import-linter
+        entry: bash -c "cd api && uv run lint-imports"
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy type-check
+        entry: bash -c "cd api && uv run mypy -p tickettailor"
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      - id: bandit
+        name: bandit SAST
+        entry: bash -c "cd api && uv run bandit -c pyproject.toml -r src/tickettailor"
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: bash -c 'cd api && uv run pytest; status=$?; [ $status -eq 0 ] || [ $status -eq 5 ]'
+        language: system
+        files: ^api/
+        pass_filenames: false
+
+      # ── Relay (deployable #3) ─────────────────────────────────────────────
+      - id: relay-ruff-format
+        name: relay ruff format
+        entry: bash -c "cd relay && uv run ruff format --check"
+        language: system
+        files: ^relay/
+        pass_filenames: false
+
+      - id: relay-ruff-lint
+        name: relay ruff lint
+        entry: bash -c "cd relay && uv run ruff check"
+        language: system
+        files: ^relay/
+        pass_filenames: false
+
+      - id: relay-mypy
+        name: relay mypy type-check
+        entry: bash -c "cd relay && uv run mypy -p relay"
+        language: system
+        files: ^relay/
+        pass_filenames: false
+
+      - id: relay-pytest
+        name: relay pytest
+        entry: bash -c 'cd relay && uv run pytest; status=$?; [ $status -eq 0 ] || [ $status -eq 5 ]'
+        language: system
+        files: ^relay/
+        pass_filenames: false
+
+      # ── Worker (deployable #2) ─────────────────────────────────────────────
+      - id: worker-ruff-format
+        name: worker ruff format
+        entry: bash -c "cd worker && uv run ruff format --check"
+        language: system
+        files: ^worker/
+        pass_filenames: false
+
+      - id: worker-ruff-lint
+        name: worker ruff lint
+        entry: bash -c "cd worker && uv run ruff check"
+        language: system
+        files: ^worker/
+        pass_filenames: false
+
+      - id: worker-mypy
+        name: worker mypy type-check
+        entry: bash -c "cd worker && uv run mypy src"
+        language: system
+        files: ^worker/
+        pass_filenames: false
+
+      - id: worker-pytest
+        name: worker pytest
+        entry: bash -c 'cd worker && uv run pytest; status=$?; [ $status -eq 0 ] || [ $status -eq 5 ]'
+        language: system
+        files: ^worker/
+        pass_filenames: false
+
+      # ── Web (frontend) ────────────────────────────────────────────────────
+      - id: web-prettier
+        name: web prettier (check)
+        entry: bash -c "cd web && npx prettier --check ."
+        language: system
+        files: ^web/
+        pass_filenames: false
+
+      - id: web-eslint
+        name: web eslint
+        entry: bash -c "cd web && npm run lint"
+        language: system
+        files: ^web/
+        pass_filenames: false

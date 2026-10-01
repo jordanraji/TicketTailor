@@ -1,0 +1,919 @@
+{
+  "/Users/raji/UQ/2/SA/Assignment/2026-Prac6-TicketTailor/worker/serverless.yml": {
+    "versionFramework": "4.37.0",
+    "servicePath": "/Users/raji/UQ/2/SA/Assignment/2026-Prac6-TicketTailor/worker/serverless.yml",
+    "serviceConfigFileName": "serverless.yml",
+    "service": {
+      "service": "tickettailor-worker",
+      "provider": {
+        "name": "aws",
+        "runtime": "python3.12",
+        "region": "ap-southeast-2",
+        "stage": "local",
+        "profile": "localstack",
+        "environment": {
+          "PYTHONPATH": "/var/task/src"
+        },
+        "versionFunctions": true,
+        "compiledCloudFormationTemplate": {
+          "AWSTemplateFormatVersion": "2010-09-09",
+          "Description": "The AWS CloudFormation template for this Serverless application",
+          "Resources": {
+            "WorkerLogGroup": {
+              "Type": "AWS::Logs::LogGroup",
+              "Properties": {
+                "LogGroupName": "/aws/lambda/tickettailor-worker-local-worker"
+              }
+            },
+            "IamRoleLambdaExecution": {
+              "Type": "AWS::IAM::Role",
+              "Properties": {
+                "AssumeRolePolicyDocument": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Principal": {
+                        "Service": [
+                          "lambda.amazonaws.com"
+                        ]
+                      },
+                      "Action": [
+                        "sts:AssumeRole"
+                      ]
+                    }
+                  ]
+                },
+                "Policies": [
+                  {
+                    "PolicyName": {
+                      "Fn::Join": [
+                        "-",
+                        [
+                          "tickettailor-worker",
+                          "local",
+                          "lambda"
+                        ]
+                      ]
+                    },
+                    "PolicyDocument": {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "logs:CreateLogStream",
+                            "logs:CreateLogGroup",
+                            "logs:TagResource"
+                          ],
+                          "Resource": [
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*"
+                            }
+                          ]
+                        },
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "logs:PutLogEvents"
+                          ],
+                          "Resource": [
+                            {
+                              "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*:*"
+                            }
+                          ]
+                        },
+                        {
+                          "Effect": "Allow",
+                          "Action": [
+                            "sqs:ReceiveMessage",
+                            "sqs:DeleteMessage",
+                            "sqs:GetQueueAttributes"
+                          ],
+                          "Resource": [
+                            {
+                              "Fn::GetAtt": [
+                                "TicketTailorQueue",
+                                "Arn"
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "Path": "/",
+                "RoleName": {
+                  "Fn::Join": [
+                    "-",
+                    [
+                      "tickettailor-worker",
+                      "local",
+                      {
+                        "Ref": "AWS::Region"
+                      },
+                      "lambdaRole"
+                    ]
+                  ]
+                }
+              }
+            },
+            "WorkerLambdaFunction": {
+              "Type": "AWS::Lambda::Function",
+              "Properties": {
+                "Code": {
+                  "S3Bucket": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+                  "S3Key": "serverless/tickettailor-worker/local/1780480085542-2026-06-03T09:48:05.542Z/tickettailor-worker.zip"
+                },
+                "Handler": "worker.lambda_handler.lambda_handler",
+                "Runtime": "python3.12",
+                "FunctionName": "tickettailor-worker-local-worker",
+                "MemorySize": 1024,
+                "Timeout": 6,
+                "Environment": {
+                  "Variables": {
+                    "PYTHONPATH": "/var/task/src"
+                  }
+                },
+                "Role": {
+                  "Fn::GetAtt": [
+                    "IamRoleLambdaExecution",
+                    "Arn"
+                  ]
+                }
+              },
+              "DependsOn": [
+                "WorkerLogGroup"
+              ]
+            },
+            "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo": {
+              "Type": "AWS::Lambda::Version",
+              "DeletionPolicy": "Retain",
+              "Properties": {
+                "FunctionName": {
+                  "Ref": "WorkerLambdaFunction"
+                },
+                "CodeSha256": "kK0Op/P+KcEzAiUOpQnJKGE94r8EnNAoBcWOLBALaNk="
+              }
+            },
+            "WorkerEventSourceMappingSQSTicketTailorQueue": {
+              "Type": "AWS::Lambda::EventSourceMapping",
+              "DependsOn": [
+                "IamRoleLambdaExecution"
+              ],
+              "Properties": {
+                "BatchSize": 1,
+                "EventSourceArn": {
+                  "Fn::GetAtt": [
+                    "TicketTailorQueue",
+                    "Arn"
+                  ]
+                },
+                "FunctionName": {
+                  "Fn::GetAtt": [
+                    "WorkerLambdaFunction",
+                    "Arn"
+                  ]
+                },
+                "Enabled": true
+              }
+            },
+            "TicketTailorTopic": {
+              "Type": "AWS::SNS::Topic",
+              "Properties": {
+                "TopicName": "tickettailor"
+              }
+            },
+            "TicketTailorQueue": {
+              "Type": "AWS::SQS::Queue",
+              "Properties": {
+                "QueueName": "tickettailor-notifications"
+              }
+            },
+            "TicketTailorSubscription": {
+              "Type": "AWS::SNS::Subscription",
+              "Properties": {
+                "TopicArn": {
+                  "Ref": "TicketTailorTopic"
+                },
+                "Endpoint": {
+                  "Fn::GetAtt": [
+                    "TicketTailorQueue",
+                    "Arn"
+                  ]
+                },
+                "Protocol": "sqs"
+              }
+            },
+            "TicketTailorQueuePolicy": {
+              "Type": "AWS::SQS::QueuePolicy",
+              "Properties": {
+                "Queues": [
+                  {
+                    "Ref": "TicketTailorQueue"
+                  }
+                ],
+                "PolicyDocument": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Principal": "*",
+                      "Action": "sqs:SendMessage",
+                      "Resource": {
+                        "Fn::GetAtt": [
+                          "TicketTailorQueue",
+                          "Arn"
+                        ]
+                      },
+                      "Condition": {
+                        "ArnEquals": {
+                          "aws:SourceArn": {
+                            "Ref": "TicketTailorTopic"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "Outputs": {
+            "ServerlessDeploymentBucketName": {
+              "Value": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+              "Export": {
+                "Name": "sls-tickettailor-worker-local-ServerlessDeploymentBucketName"
+              }
+            },
+            "WorkerLambdaFunctionQualifiedArn": {
+              "Description": "Current Lambda function version",
+              "Value": {
+                "Ref": "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo"
+              },
+              "Export": {
+                "Name": "sls-tickettailor-worker-local-WorkerLambdaFunctionQualifiedArn"
+              }
+            }
+          }
+        },
+        "vpc": {}
+      },
+      "plugins": [
+        "serverless-localstack"
+      ],
+      "custom": {
+        "localstack": {
+          "stages": [
+            "local"
+          ],
+          "host": "http://localhost:4566",
+          "autostart": false
+        },
+        "pythonRequirements": {
+          "dockerizePip": true,
+          "pythonBin": "python3"
+        }
+      },
+      "package": {
+        "patterns": [
+          "!**",
+          "src/worker/**",
+          ".env"
+        ],
+        "artifactsS3KeyDirname": "serverless/tickettailor-worker/local/code-artifacts",
+        "deploymentBucket": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+        "artifact": "/Users/raji/UQ/2/SA/Assignment/2026-Prac6-TicketTailor/worker/.serverless/tickettailor-worker.zip",
+        "artifactDirectoryName": "serverless/tickettailor-worker/local/1780480085542-2026-06-03T09:48:05.542Z"
+      },
+      "functions": {
+        "worker": {
+          "handler": "worker.lambda_handler.lambda_handler",
+          "events": [
+            {
+              "sqs": {
+                "arn": {
+                  "Fn::GetAtt": [
+                    "TicketTailorQueue",
+                    "Arn"
+                  ]
+                },
+                "batchSize": 1
+              }
+            }
+          ],
+          "name": "tickettailor-worker-local-worker",
+          "module": ".",
+          "package": {},
+          "memory": 1024,
+          "timeout": 6,
+          "runtime": "python3.12",
+          "vpc": {},
+          "versionLogicalId": "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo"
+        }
+      },
+      "resources": {
+        "Resources": {
+          "TicketTailorTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+              "TopicName": "tickettailor"
+            }
+          },
+          "TicketTailorQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "tickettailor-notifications"
+            }
+          },
+          "TicketTailorSubscription": {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+              "TopicArn": {
+                "Ref": "TicketTailorTopic"
+              },
+              "Endpoint": {
+                "Fn::GetAtt": [
+                  "TicketTailorQueue",
+                  "Arn"
+                ]
+              },
+              "Protocol": "sqs"
+            }
+          },
+          "TicketTailorQueuePolicy": {
+            "Type": "AWS::SQS::QueuePolicy",
+            "Properties": {
+              "Queues": [
+                {
+                  "Ref": "TicketTailorQueue"
+                }
+              ],
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "sqs:SendMessage",
+                    "Resource": {
+                      "Fn::GetAtt": [
+                        "TicketTailorQueue",
+                        "Arn"
+                      ]
+                    },
+                    "Condition": {
+                      "ArnEquals": {
+                        "aws:SourceArn": {
+                          "Ref": "TicketTailorTopic"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "Outputs": {}
+      }
+    },
+    "provider": {
+      "name": "aws",
+      "runtime": "python3.12",
+      "region": "ap-southeast-2",
+      "stage": "local",
+      "profile": "localstack",
+      "environment": {
+        "PYTHONPATH": "/var/task/src"
+      },
+      "versionFunctions": true,
+      "compiledCloudFormationTemplate": {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "The AWS CloudFormation template for this Serverless application",
+        "Resources": {
+          "WorkerLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/aws/lambda/tickettailor-worker-local-worker"
+            }
+          },
+          "IamRoleLambdaExecution": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": [
+                        "lambda.amazonaws.com"
+                      ]
+                    },
+                    "Action": [
+                      "sts:AssumeRole"
+                    ]
+                  }
+                ]
+              },
+              "Policies": [
+                {
+                  "PolicyName": {
+                    "Fn::Join": [
+                      "-",
+                      [
+                        "tickettailor-worker",
+                        "local",
+                        "lambda"
+                      ]
+                    ]
+                  },
+                  "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:CreateLogStream",
+                          "logs:CreateLogGroup",
+                          "logs:TagResource"
+                        ],
+                        "Resource": [
+                          {
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*"
+                          }
+                        ]
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:PutLogEvents"
+                        ],
+                        "Resource": [
+                          {
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*:*"
+                          }
+                        ]
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "sqs:ReceiveMessage",
+                          "sqs:DeleteMessage",
+                          "sqs:GetQueueAttributes"
+                        ],
+                        "Resource": [
+                          {
+                            "Fn::GetAtt": [
+                              "TicketTailorQueue",
+                              "Arn"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "Path": "/",
+              "RoleName": {
+                "Fn::Join": [
+                  "-",
+                  [
+                    "tickettailor-worker",
+                    "local",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    "lambdaRole"
+                  ]
+                ]
+              }
+            }
+          },
+          "WorkerLambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+              "Code": {
+                "S3Bucket": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+                "S3Key": "serverless/tickettailor-worker/local/1780480085542-2026-06-03T09:48:05.542Z/tickettailor-worker.zip"
+              },
+              "Handler": "worker.lambda_handler.lambda_handler",
+              "Runtime": "python3.12",
+              "FunctionName": "tickettailor-worker-local-worker",
+              "MemorySize": 1024,
+              "Timeout": 6,
+              "Environment": {
+                "Variables": {
+                  "PYTHONPATH": "/var/task/src"
+                }
+              },
+              "Role": {
+                "Fn::GetAtt": [
+                  "IamRoleLambdaExecution",
+                  "Arn"
+                ]
+              }
+            },
+            "DependsOn": [
+              "WorkerLogGroup"
+            ]
+          },
+          "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo": {
+            "Type": "AWS::Lambda::Version",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+              "FunctionName": {
+                "Ref": "WorkerLambdaFunction"
+              },
+              "CodeSha256": "kK0Op/P+KcEzAiUOpQnJKGE94r8EnNAoBcWOLBALaNk="
+            }
+          },
+          "WorkerEventSourceMappingSQSTicketTailorQueue": {
+            "Type": "AWS::Lambda::EventSourceMapping",
+            "DependsOn": [
+              "IamRoleLambdaExecution"
+            ],
+            "Properties": {
+              "BatchSize": 1,
+              "EventSourceArn": {
+                "Fn::GetAtt": [
+                  "TicketTailorQueue",
+                  "Arn"
+                ]
+              },
+              "FunctionName": {
+                "Fn::GetAtt": [
+                  "WorkerLambdaFunction",
+                  "Arn"
+                ]
+              },
+              "Enabled": true
+            }
+          },
+          "TicketTailorTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+              "TopicName": "tickettailor"
+            }
+          },
+          "TicketTailorQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "tickettailor-notifications"
+            }
+          },
+          "TicketTailorSubscription": {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+              "TopicArn": {
+                "Ref": "TicketTailorTopic"
+              },
+              "Endpoint": {
+                "Fn::GetAtt": [
+                  "TicketTailorQueue",
+                  "Arn"
+                ]
+              },
+              "Protocol": "sqs"
+            }
+          },
+          "TicketTailorQueuePolicy": {
+            "Type": "AWS::SQS::QueuePolicy",
+            "Properties": {
+              "Queues": [
+                {
+                  "Ref": "TicketTailorQueue"
+                }
+              ],
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "sqs:SendMessage",
+                    "Resource": {
+                      "Fn::GetAtt": [
+                        "TicketTailorQueue",
+                        "Arn"
+                      ]
+                    },
+                    "Condition": {
+                      "ArnEquals": {
+                        "aws:SourceArn": {
+                          "Ref": "TicketTailorTopic"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "Outputs": {
+          "ServerlessDeploymentBucketName": {
+            "Value": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+            "Export": {
+              "Name": "sls-tickettailor-worker-local-ServerlessDeploymentBucketName"
+            }
+          },
+          "WorkerLambdaFunctionQualifiedArn": {
+            "Description": "Current Lambda function version",
+            "Value": {
+              "Ref": "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo"
+            },
+            "Export": {
+              "Name": "sls-tickettailor-worker-local-WorkerLambdaFunctionQualifiedArn"
+            }
+          }
+        }
+      },
+      "vpc": {}
+    },
+    "dashboard": {
+      "isEnabledForService": false,
+      "requiredAuthentication": false,
+      "orgFeaturesInUse": null,
+      "orgObservabilityIntegrations": null,
+      "serviceAppId": null,
+      "serviceProvider": null,
+      "instanceParameters": null
+    },
+    "serviceRawFile": "service: tickettailor-worker\n\nprovider:\n  name: aws\n  runtime: python3.12\n  region: ap-southeast-2\n  stage: ${opt:stage, 'local'}\n  profile: localstack\n  environment:\n    PYTHONPATH: /var/task/src\n\nplugins:\n  - serverless-localstack\n\ncustom:\n  localstack:\n    stages:\n      - local\n    host: http://localhost:4566\n    autostart: false\n  pythonRequirements:\n    dockerizePip: true\n    pythonBin: python3\n\npackage:\n  patterns:\n    - '!**'\n    - 'src/worker/**'\n    - '.env'\n\nfunctions:\n  worker:\n    handler: worker.lambda_handler.lambda_handler\n    events:\n      - sqs:\n          arn:\n            Fn::GetAtt:\n              - TicketTailorQueue\n              - Arn\n          batchSize: 1\n\nresources:\n  Resources:\n    TicketTailorTopic:\n      Type: AWS::SNS::Topic\n      Properties:\n        TopicName: tickettailor\n\n    TicketTailorQueue:\n      Type: AWS::SQS::Queue\n      Properties:\n        QueueName: tickettailor-notifications\n\n    TicketTailorSubscription:\n      Type: AWS::SNS::Subscription\n      Properties:\n        TopicArn: !Ref TicketTailorTopic\n        Endpoint: !GetAtt TicketTailorQueue.Arn\n        Protocol: sqs\n\n    TicketTailorQueuePolicy:\n      Type: AWS::SQS::QueuePolicy\n      Properties:\n        Queues:\n          - !Ref TicketTailorQueue\n        PolicyDocument:\n          Version: '2012-10-17'\n          Statement:\n            - Effect: Allow\n              Principal: '*'\n              Action: sqs:SendMessage\n              Resource: !GetAtt TicketTailorQueue.Arn\n              Condition:\n                ArnEquals:\n                  aws:SourceArn: !Ref TicketTailorTopic\n",
+    "command": [
+      "deploy"
+    ],
+    "options": {
+      "stage": "local"
+    },
+    "orgId": "70c1faf9-6408-496c-a6fd-a5b850cd799c",
+    "orgName": "jordanraji",
+    "userId": "BL3HqjbsBd0ZRQ61MC",
+    "userName": "jordanraji",
+    "serviceProviderAwsAccountId": "000000000000",
+    "serviceProviderAwsCfStackName": "tickettailor-worker-local",
+    "serviceProviderAwsCfStackId": "arn:aws:cloudformation:ap-southeast-2:000000000000:stack/tickettailor-worker-local/61a3f009-a0c1-4c19-ab2e-a4553de1f07a",
+    "serviceProviderAwsCfStackCreated": "2026-06-03T09:48:05.946Z",
+    "serviceProviderAwsCfStackUpdated": "2026-06-03T09:48:05.946Z",
+    "serviceProviderAwsCfStackStatus": "CREATE_COMPLETE",
+    "serviceProviderAwsCfStackOutputs": [
+      {
+        "OutputKey": "ServerlessDeploymentBucketName",
+        "OutputValue": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+        "ExportName": "sls-tickettailor-worker-local-ServerlessDeploymentBucketName"
+      },
+      {
+        "OutputKey": "WorkerLambdaFunctionQualifiedArn",
+        "OutputValue": "arn:aws:lambda:ap-southeast-2:000000000000:function:tickettailor-worker-local-worker:1",
+        "ExportName": "sls-tickettailor-worker-local-WorkerLambdaFunctionQualifiedArn"
+      }
+    ],
+    "compiledCloudFormationTemplate": {
+      "AWSTemplateFormatVersion": "2010-09-09",
+      "Description": "The AWS CloudFormation template for this Serverless application",
+      "Resources": {
+        "WorkerLogGroup": {
+          "Type": "AWS::Logs::LogGroup",
+          "Properties": {
+            "LogGroupName": "/aws/lambda/tickettailor-worker-local-worker"
+          }
+        },
+        "IamRoleLambdaExecution": {
+          "Type": "AWS::IAM::Role",
+          "Properties": {
+            "AssumeRolePolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": [
+                      "lambda.amazonaws.com"
+                    ]
+                  },
+                  "Action": [
+                    "sts:AssumeRole"
+                  ]
+                }
+              ]
+            },
+            "Policies": [
+              {
+                "PolicyName": {
+                  "Fn::Join": [
+                    "-",
+                    [
+                      "tickettailor-worker",
+                      "local",
+                      "lambda"
+                    ]
+                  ]
+                },
+                "PolicyDocument": {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "logs:CreateLogStream",
+                        "logs:CreateLogGroup",
+                        "logs:TagResource"
+                      ],
+                      "Resource": [
+                        {
+                          "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*"
+                        }
+                      ]
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "logs:PutLogEvents"
+                      ],
+                      "Resource": [
+                        {
+                          "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/tickettailor-worker-local*:*:*"
+                        }
+                      ]
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "sqs:ReceiveMessage",
+                        "sqs:DeleteMessage",
+                        "sqs:GetQueueAttributes"
+                      ],
+                      "Resource": [
+                        {
+                          "Fn::GetAtt": [
+                            "TicketTailorQueue",
+                            "Arn"
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "Path": "/",
+            "RoleName": {
+              "Fn::Join": [
+                "-",
+                [
+                  "tickettailor-worker",
+                  "local",
+                  {
+                    "Ref": "AWS::Region"
+                  },
+                  "lambdaRole"
+                ]
+              ]
+            }
+          }
+        },
+        "WorkerLambdaFunction": {
+          "Type": "AWS::Lambda::Function",
+          "Properties": {
+            "Code": {
+              "S3Bucket": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+              "S3Key": "serverless/tickettailor-worker/local/1780480085542-2026-06-03T09:48:05.542Z/tickettailor-worker.zip"
+            },
+            "Handler": "worker.lambda_handler.lambda_handler",
+            "Runtime": "python3.12",
+            "FunctionName": "tickettailor-worker-local-worker",
+            "MemorySize": 1024,
+            "Timeout": 6,
+            "Environment": {
+              "Variables": {
+                "PYTHONPATH": "/var/task/src"
+              }
+            },
+            "Role": {
+              "Fn::GetAtt": [
+                "IamRoleLambdaExecution",
+                "Arn"
+              ]
+            }
+          },
+          "DependsOn": [
+            "WorkerLogGroup"
+          ]
+        },
+        "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo": {
+          "Type": "AWS::Lambda::Version",
+          "DeletionPolicy": "Retain",
+          "Properties": {
+            "FunctionName": {
+              "Ref": "WorkerLambdaFunction"
+            },
+            "CodeSha256": "kK0Op/P+KcEzAiUOpQnJKGE94r8EnNAoBcWOLBALaNk="
+          }
+        },
+        "WorkerEventSourceMappingSQSTicketTailorQueue": {
+          "Type": "AWS::Lambda::EventSourceMapping",
+          "DependsOn": [
+            "IamRoleLambdaExecution"
+          ],
+          "Properties": {
+            "BatchSize": 1,
+            "EventSourceArn": {
+              "Fn::GetAtt": [
+                "TicketTailorQueue",
+                "Arn"
+              ]
+            },
+            "FunctionName": {
+              "Fn::GetAtt": [
+                "WorkerLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Enabled": true
+          }
+        },
+        "TicketTailorTopic": {
+          "Type": "AWS::SNS::Topic",
+          "Properties": {
+            "TopicName": "tickettailor"
+          }
+        },
+        "TicketTailorQueue": {
+          "Type": "AWS::SQS::Queue",
+          "Properties": {
+            "QueueName": "tickettailor-notifications"
+          }
+        },
+        "TicketTailorSubscription": {
+          "Type": "AWS::SNS::Subscription",
+          "Properties": {
+            "TopicArn": {
+              "Ref": "TicketTailorTopic"
+            },
+            "Endpoint": {
+              "Fn::GetAtt": [
+                "TicketTailorQueue",
+                "Arn"
+              ]
+            },
+            "Protocol": "sqs"
+          }
+        },
+        "TicketTailorQueuePolicy": {
+          "Type": "AWS::SQS::QueuePolicy",
+          "Properties": {
+            "Queues": [
+              {
+                "Ref": "TicketTailorQueue"
+              }
+            ],
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": "*",
+                  "Action": "sqs:SendMessage",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "TicketTailorQueue",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "ArnEquals": {
+                      "aws:SourceArn": {
+                        "Ref": "TicketTailorTopic"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Outputs": {
+        "ServerlessDeploymentBucketName": {
+          "Value": "serverless-framework-deployments-ap-southeast-2-33e9dde6-2c4c",
+          "Export": {
+            "Name": "sls-tickettailor-worker-local-ServerlessDeploymentBucketName"
+          }
+        },
+        "WorkerLambdaFunctionQualifiedArn": {
+          "Description": "Current Lambda function version",
+          "Value": {
+            "Ref": "WorkerLambdaVersionhM1zinyq9oL1E60AxGKfAG9ezVg1y500ArZQxMdWKo"
+          },
+          "Export": {
+            "Name": "sls-tickettailor-worker-local-WorkerLambdaFunctionQualifiedArn"
+          }
+        }
+      }
+    }
+  }
+}

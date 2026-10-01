@@ -1,0 +1,13 @@
+{
+  "name": "tickettailor-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-driven happy-path e2e (AR3) for TicketTailor.",
+  "scripts": {
+    "test": "playwright test",
+    "install-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

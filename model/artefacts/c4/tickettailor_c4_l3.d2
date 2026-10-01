@@ -1,0 +1,191 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - C4 Level 3: Component Diagram
+#  Zooms into the Backend API container (modular monolith).
+#  Shows the 7 internal components, their responsibilities,
+#  key interfaces, and interactions with external containers.
+# ─────────────────────────────────────────────────────────────────
+
+direction: right
+
+title: "TicketTailor - C4 Level 3: Component Diagram (Backend API)" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ─────────────────────────────────────────────────────────────────
+#  EXTERNAL CONTAINERS  (referenced from L2, shown for context)
+# ─────────────────────────────────────────────────────────────────
+
+spa: "Next.js SPA" {
+  label: "Next.js SPA\n[Container: Next.js static export, JavaScript]\nCalls REST endpoints over HTTPS"
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+  style.border-radius: 8
+  icon: https://icons.terrastruct.com/dev/react.svg
+}
+
+postgres: "PostgreSQL + PostGIS" {
+  label: "PostgreSQL + PostGIS\n[Container: AWS RDS]\nPrimary store for all domain data.\nOutbox table for domain events."
+  shape: cylinder
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+  icon: https://icons.terrastruct.com/dev/postgresql.svg
+}
+
+redis: "Redis" {
+  label: "Redis\n[Container: AWS ElastiCache]\nAtomic attendee counters (INCR/DECR)\nGeo-query result cache (TTL 30s)"
+  shape: cylinder
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+  icon: https://icons.terrastruct.com/dev/redis.svg
+}
+
+# [4] Added S3 as external container - present in L2 but missing here
+s3: "S3" {
+  label: "S3\n[Container: AWS S3]\nEvent image attachments"
+  shape: cylinder
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+  icon: https://icons.terrastruct.com/aws/Storage/Amazon-Simple-Storage-Service-S3.svg
+}
+
+
+# ─────────────────────────────────────────────────────────────────
+#  BACKEND API - COMPONENT BOUNDARY
+# ─────────────────────────────────────────────────────────────────
+
+api: "Backend API" {
+  label: "Backend API\n[Container: Python / FastAPI - ECS Fargate]"
+  style.fill: "#f0f7ff"
+  style.stroke: "#6c8ebf"
+  style.stroke-width: 3
+  style.border-radius: 10
+
+  # ── Component: Auth ──────────────────────────────────────────
+
+  auth: "Auth Module" {
+    label: "Auth Module\n[Component: FastAPI Router]\nHandles user registration and login.\nIssues and validates JWT access tokens\nand refresh tokens.\nArgon2id password hashing."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: Users ─────────────────────────────────────────
+
+  users: "Users Module" {
+    label: "Users Module\n[Component: FastAPI Router]\nManages user profiles and metadata.\nClub follow / unfollow logic.\nExposes GET /users/{id},\nPUT /users/profile.\nExposes followers_for_club / contact_details_for\nfor the relay's notification fan-out (ADR-0016)."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: Events ────────────────────────────────────────
+
+  events: "Events Module" {
+    label: "Events Module\n[Component: FastAPI Router]\nFull CRUD for events.\nGeospatial queries via PostGIS\nST_DWithin (radius filtering).\nCategory and date filters.\nClub-only vs public visibility.\nStores image attachments to S3."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: RSVP ──────────────────────────────────────────
+
+  rsvp: "RSVP Module" {
+    label: "RSVP Module\n[Component: FastAPI Router]\nHandles member RSVPs.\nRedis INCR/DECR for attendee\ncounters (atomic, no lost updates).\nRequest idempotency via the DB\n(user_id,event_id) unique constraint;\nSET-NX gate deferred (ADR-0005).\nPersists final count to PostgreSQL.\nExposes attendees_for_event for the relay's\nevent_updated fan-out (ADR-0016)."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: Organisers ────────────────────────────────────
+
+  organisers: "Organisers Module" {
+    label: "Organisers Module\n[Component: FastAPI Router]\nClub creation and management.\nCommittee member role assignment.\nExposes is_member_of(user_id, club_id)\nservice for Events authorization checks."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: Calendar ──────────────────────────────────────
+
+  calendar: "Calendar Module" {
+    label: "Calendar Module\n[Component: FastAPI Router]\nGenerates RFC 5545 iCal (.ics) files\nin memory from event data.\nTwo endpoints:\n· GET /events/{id}/calendar.ics\n  [Bearer JWT - SPA one-off download]\n· GET /calendar/{token}/feed.ics\n  [token in URL - webcal:// subscription]\nToken is revocable and unguessable\n(ADR-0007)."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+  }
+
+  # ── Component: Outbox Writer ─────────────────────────────────
+
+  outbox_writer: "Outbox Writer" {
+    label: "Outbox Writer\n[Component: Internal Service]\nDurably records domain events\n(event_created, event_updated,\nrsvp_placed, rsvp_cancelled,\nclub_membership_changed, etc.)\nin the outbox table within the same\nDB transaction as the triggering\nbusiness write.\nNOTE: visibility_changed is written\nby the Outbox Relay, not here\n(ADR-0010)."
+    style.fill: "#ffe6cc"
+    style.stroke: "#d79b00"
+    style.border-radius: 8
+  }
+}
+
+# ─────────────────────────────────────────────────────────────────
+#  RELATIONSHIPS - SPA to Components
+# ─────────────────────────────────────────────────────────────────
+
+spa -> api.auth: "POST /auth/register\nPOST /auth/login\nPOST /auth/refresh [HTTPS/JSON]"
+spa -> api.users: "GET /users/{id}\nPUT /users/profile\nPOST /users/follow/{club_id} [HTTPS/JSON]"
+spa -> api.events: "GET /events (geo + filters)\nPOST /events\nPATCH /events/{id} [HTTPS/JSON]"
+spa -> api.rsvp: "POST /events/{id}/rsvp\nDELETE /events/{id}/rsvp [HTTPS/JSON]"
+spa -> api.organisers: "POST /clubs\nPUT /clubs/{id}\nPOST /clubs/{id}/members [HTTPS/JSON]"
+spa -> api.calendar: "GET /events/{id}/calendar.ics\n[Bearer JWT - one-off download, HTTPS]"
+
+# ─────────────────────────────────────────────────────────────────
+#  RELATIONSHIPS - Internal component interactions
+# ─────────────────────────────────────────────────────────────────
+
+# Auth creates the user record; Users owns the profile data
+api.auth -> api.users: "Creates user record on\nsuccessful registration"
+
+# Events calls Organisers for authz - Organisers never reaches into Events (ADR-0009)
+api.events -> api.organisers: "Calls is_member_of(user_id, club_id)\nfor authorization before event mutation"
+
+# Calendar calls Organisers to verify membership for club-only events
+api.calendar -> api.organisers: "Calls is_member_of(user_id, club_id)\nfor club-only event visibility check"
+
+# Domain event emission into the outbox
+api.events -> api.outbox_writer: "Emits event_created,\nevent_updated events"
+api.rsvp -> api.outbox_writer: "Emits rsvp_placed,\nrsvp_cancelled events"
+api.organisers -> api.outbox_writer: "Emits club_membership_changed events"
+
+# ─────────────────────────────────────────────────────────────────
+#  RELATIONSHIPS - Components to external containers
+# ─────────────────────────────────────────────────────────────────
+
+# Auth → PostgreSQL
+api.auth -> postgres: "Reads/writes user credentials and\nrefresh token sessions [asyncpg]"
+
+# Users → PostgreSQL
+api.users -> postgres: "Reads/writes user profiles and club follows [asyncpg]"
+
+# Events → PostgreSQL
+api.events -> postgres: "CRUD events table. ST_DWithin geo filter. Filters by category and date [asyncpg]"
+
+# Events → Redis (geo-query result cache - confirmed by SD-05, ADR-0005)
+api.events -> redis: "GET/SET cache:{hash(lat,lng,radius,filters)}. TTL 30s - geo-query result cache [aioredis]"
+
+# Events → S3 (event image attachments - present in L2, missing here)
+api.events -> s3: "Stores/reads event image attachments [boto3]"
+
+# RSVP → Redis
+api.rsvp -> redis: "INCR/DECR attendee counter after DB commit.\nIdempotency is the DB unique constraint (ADR-0005) [aioredis]"
+
+# RSVP → PostgreSQL
+api.rsvp -> postgres: "Persists RSVP record and\nfinal attendee count [asyncpg]"
+
+# Organisers → PostgreSQL
+api.organisers -> postgres: "Reads/writes club and\nmembership records [asyncpg]"
+
+# Calendar → PostgreSQL
+api.calendar -> postgres: "Reads event details\nfor .ics generation [asyncpg]"
+
+# Outbox Writer → PostgreSQL
+api.outbox_writer -> postgres: "Inserts domain event row into\noutbox table within the same\nDB transaction [asyncpg]"

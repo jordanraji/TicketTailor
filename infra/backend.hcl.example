@@ -1,0 +1,9 @@
+# Copy to backend.hcl and set your team's shared state bucket, then:
+#   terraform init -backend-config=backend.hcl
+# Uncomment the `backend "s3"` block in versions.tf first.
+#
+# The bucket must already exist (create it once, out of band, with the LabRole).
+
+bucket = "csse6400-tickettailor-tfstate"
+region = "us-east-1"
+# key is set in versions.tf (tickettailor/terraform.tfstate)

@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored - never
+# commit real secrets. Generate VAPID keys with the worker's tooling (ADR-0011).
+
+aws_region = "us-east-1" # what your Learner Lab session grants
+
+# Database
+db_password = "change-me-strong-password"
+
+# API
+secret_key = "change-me-32+-byte-random-string"
+
+# Web push (ADR-0011) - generate a real key pair before deploying
+vapid_public_key   = "REPLACE_WITH_VAPID_PUBLIC_KEY"
+vapid_private_key  = "REPLACE_WITH_VAPID_PRIVATE_KEY"
+vapid_claims_email = "mailto:you@example.com"
+
+# Email (ADR-0012) - leave resend_api_key empty to disable real sends
+email_provider     = "resend"
+email_from_address = "noreply@tickettailor.local"
+resend_api_key     = ""
+
+# Image tags (push images to ECR first; see README)
+api_image_tag    = "latest"
+relay_image_tag  = "latest"
+worker_image_tag = "latest"
+
+# Frontend (ADR-0020). On the Learner Lab, serve the SPA from a public S3
+# website bucket over HTTP (cloudfront is denied, so leave enable_frontend off).
+# Set this true, `make apply`, then `make web` to build + publish the bundle.
+enable_frontend_website = false

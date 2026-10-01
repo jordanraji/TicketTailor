@@ -1,0 +1,45 @@
+name: Build Report PDF
+
+# Render the figure PDFs from the d2 sources, compile report/main.tex to a PDF,
+# and upload it as a build artifact. Runs on report or diagram changes.
+on:
+  push:
+    paths:
+      - 'report/**'
+      - 'model/artefacts/**'
+      - '.github/workflows/report.yml'
+  pull_request:
+    paths:
+      - 'report/**'
+      - 'model/artefacts/**'
+      - '.github/workflows/report.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install D2
+        run: |
+          curl -fsSL https://d2lang.com/install.sh | sh -s --
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+
+      - name: Render figures from d2 sources
+        # Falls back to the committed figure PDFs if d2 rendering fails.
+        run: ./report/figures/render.sh || echo "d2 render failed; using committed figures"
+
+      - name: Compile LaTeX report
+        uses: xu-cheng/latex-action@v3
+        with:
+          working_directory: report
+          root_file: main.tex
+
+      - name: Upload report PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: tickettailor-report
+          path: report/main.pdf
+          if-no-files-found: error

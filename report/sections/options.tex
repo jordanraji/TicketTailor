@@ -1,0 +1,47 @@
+% ---------------------------------------------------------------
+% Architecture Options
+% Patterns considered, pros and cons against TicketTailor's ASRs:
+% scalability, reliability, interoperability, and privacy/security.
+% ---------------------------------------------------------------
+\section{Architecture Options}
+\label{sec:options}
+
+This section compares the main architectural options considered for TicketTailor and explains why the team selected a modular monolith with extracted event-driven components. The comparison is based on the project's architecturally significant requirements (ASRs): scalability for RSVP and notification spikes, reliability for RSVP counts and event state changes, interoperability with external calendar tools, and security/privacy for user and event data.
+
+\subsection{Option 1: Traditional Two-Tier Monolith}
+
+The simplest option was a traditional two-tier architecture: a single web application connected directly to a relational database. This option would have been the fastest to build and easiest to deploy. It would also make local development and functional testing straightforward because most behaviour would live in one application and one database.
+
+However, this option was not suitable for TicketTailor's ASRs. The system needs to handle bursty RSVP traffic, public event browsing, scheduled visibility transitions, and notification fan-out when events change. In a basic two-tier design, heavy work such as notification delivery or calendar/feed generation would share the same request path as ordinary API requests. This increases the risk that expensive background work slows down user-facing operations. It also provides a weak scalability story because there is no clear asynchronous boundary for notification bursts and no credible path for extracting hot modules later.
+
+For these reasons, the two-tier option was rejected. It was simple, but it did not provide enough architectural depth to support the scalability, reliability, and extensibility requirements of the project.
+
+\subsection{Option 2: Full Microservices}
+
+A second option was a full microservices architecture. In this design, major domains such as authentication, users, organisers, events, RSVP, calendar, notifications, and map/search functionality would be split into independently deployed services, likely behind an API gateway and connected through service-to-service communication and message queues.
+
+The main advantage of this option is strong separation and independent scalability. For example, an RSVP service, calendar service, and notification service could each scale separately based on their own workloads. This would also provide clear service ownership and a strong long-term expansion path.
+
+The drawback is that this option adds significant operational and testing complexity. A full microservices design would require multiple deployments, inter-service contracts, distributed tracing, service discovery, and more complicated failure handling. It would also make data consistency harder, especially for workflows such as RSVP placement, attendee count updates, event updates, and notification generation. These workflows must remain reliable under load, and coordinating them across multiple services would increase implementation risk within the semester timeline.
+
+Because the course project rewards a working implementation, test quality, architecture description, and architecture evaluation, the team decided that full microservices would create more complexity than value for the MVP. Although it is more expandable in theory, it would reduce the team's ability to thoroughly implement and evaluate the core architecture.
+
+\subsection{Option 3: Modular Monolith with Extracted Relay and Worker}
+
+The selected option was a modular monolith for the main API, combined with extracted event-driven components for asynchronous work. The core API remains one deployable backend, but it is organised into clear domain modules such as authentication, users, organisers, events, RSVP, calendar, and shared infrastructure. These modules use service and repository layers, separate database schemas, and import-boundary checks to avoid becoming a tangled monolith.
+
+This option keeps the main system manageable while still providing architectural separation. It avoids the deployment and testing overhead of full microservices, but it is more sophisticated than a basic two-tier application. The extracted outbox relay and notification worker create an explicit asynchronous boundary for work that should not block the API request path. This is especially important for notification fan-out and visibility transitions.
+
+For reliability, the architecture uses a transactional outbox pattern. Business changes such as RSVP actions or event updates can be committed in the same transaction as an outbox record. The relay then publishes those events asynchronously for downstream notification processing. This avoids the risk of an API request succeeding while the associated notification event is lost.
+
+For scalability, RSVP counts use a Redis-backed live counter while PostgreSQL remains the durable source of truth for RSVP rows. This reduces contention on a single relational counter during bursts, while reconciliation can correct counter drift from the database record. Read-heavy and search-heavy operations are also supported by read-oriented infrastructure, while the extracted worker can scale separately for notification workloads.
+
+For interoperability, the calendar module exposes event data using iCalendar-compatible output rather than a provider-specific integration. This allows the MVP to support external calendar tools while keeping OAuth-style two-way calendar integration as a stretch or future enhancement.
+
+\subsection{Selected Option and Rationale}
+
+The team selected the modular monolith with extracted relay and worker because it best balances the MVP constraints with the required quality attributes. It gives the project a clear architecture story: keep closely related business domains in one API for consistency and testability, but extract the bursty and asynchronous notification path where the ASRs justify it.
+
+Compared with a simple two-tier monolith, the selected architecture better supports scalability and reliability because notification fan-out, visibility transitions, Redis counters, and outbox processing are not treated as ordinary synchronous request work. Compared with full microservices, it avoids unnecessary distributed complexity while still preserving a credible future extraction path through enforced module boundaries.
+
+This design is also practical for the learner-lab deployment environment. The API, relay, worker, relational database, Redis, and messaging components can be deployed and evaluated as a realistic cloud architecture without requiring the team to manage a large number of independently deployed microservices. Overall, the selected architecture provides enough sophistication to satisfy the ASRs while remaining feasible to implement, test, and evaluate within the project timeline.

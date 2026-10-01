@@ -1,0 +1,56 @@
+% ---------------------------------------------------------------
+% Critique
+% How well does the architecture support a more sophisticated,
+% feature-rich system? Use test results where they apply; argue
+% from the design where the quality attribute cannot be tested
+% directly (e.g. extensibility, interoperability).
+% ---------------------------------------------------------------
+\section{Architectural Critique}
+\label{sec:critique}
+
+The TicketTailor architecture has been evaluated against its core Architecturally Significant Requirements (ASRs) to see how well the system supports high concurrent loads, state reliability, and external integrations. By looking at the benefits, trade-offs, and mitigations of the design choices, the overall strength of the modular monolith and serverless worker model can be assessed.
+
+\subsection{Critique 1: Scalability}
+The architecture is designed to handle sudden concurrent RSVP spikes and large notification bursts. To achieve this, Redis atomic counters manage seat availability in memory \cite{redis_race_condition}. By decrementing the ticket count in Redis before writing to the database, the system prevents lock contention and transaction failures on the primary PostgreSQL database under heavy load. For notifications, the background worker uses SQS queues and AWS Lambda, which scales out automatically as the queue grows, ensuring the main API does not slow down. Also, because the platform uses a modular monolith on ECS Fargate, modules communicate locally in-process. This avoids the network latency and serialization overhead associated with microservices.
+
+However, sharing the same runtime brings some trade-offs. Because all modules run inside the same ECS Fargate task, a resource-heavy task in one module—like generating a calendar or processing files—can hog CPU or memory and slow down critical paths like RSVPs. Also, since all modules share the same database instance, heavy geospatial searches on the map can consume connection pools and impact write transactions. Lastly, scaling is coarse-grained; the entire API container must scale even if only one module is bottlenecked.
+
+To mitigate this, Import Linter enforces strict module boundaries. The system's \texttt{.importlinter} configuration defines a strict layered hierarchy where the topmost layer, \texttt{tickettailor.calendar}, can access lower layers like \texttt{tickettailor.rsvp}, \texttt{tickettailor.events}, \texttt{tickettailor.organisers}, \texttt{tickettailor.auth}, and \texttt{tickettailor.users}, while the lowest layer, \texttt{tickettailor.shared}, is prohibited from importing anything above it. This keeps the code decoupled, meaning the RSVP or search module can be easily extracted and turned into a separate microservice should traffic scale up in a hypothetical future version.
+
+\subsection{Critique 2: Reliability -- Transactional Outbox}
+It is critical that notifications are not lost and that the system state stays consistent under high concurrency. This is solved by implementing the transactional outbox pattern \cite{richardson_microservices_2025}. By saving the business record (like a new RSVP) and the notification event inside the same database transaction, the system guarantees that notification requests are never lost even if the application crashes mid-request. Once saved, the outbox relay service processes the events asynchronously. 
+
+The outbox relay service runs a dual-pass work loop in each tick. In the first phase, it performs a scheduled visibility transition, updating events from \texttt{club\_only} to \texttt{public} when they are due and adding \texttt{visibility\_changed} events to the outbox table. In the second phase, it pulls pending outbox rows, resolves the recipients, and hydrates the messages with recipient details (email, display name, latest VAPID push keys) using service interfaces like \texttt{followers\_for\_club} and \texttt{attendees\_for\_event}. Both phases utilize \texttt{SELECT ... FOR UPDATE SKIP LOCKED} queries. This database-level row locking allows multiple concurrent relay replicas to run safely without double-processing events or causing database deadlocks.
+
+The main trade-off is the extra load on the database. Because the outbox relay constantly polls the database to find new events, it puts a steady read and write load on the primary PostgreSQL database \cite{richardson_microservices_2025}. It also adds some architectural complexity since a background polling daemon must be managed.
+
+To minimize this database load, monitoring tracks the outbox table size and relay latency. This allows tuning of the polling intervals and cleanups of processed outbox rows, keeping the database running smoothly.
+
+\subsection{Critique 3: Reliability -- Redis \& Read Replica}
+Attendee counts and event data must also remain reliable under load. Using Redis atomic decrements (\texttt{DECR}) works as a fast buffer that stops concurrent write bursts from hitting the relational database directly \cite{redis_race_condition}. The design also offloads read-heavy operations, like geospatial map searches, to a PostgreSQL read replica to protect the primary database's connection pool. On top of that, API-level idempotency keys drop duplicate RSVP requests and avoid database corruption.
+
+The implementation details of the RSVP counter path show strict execution order to prevent phantom counts. During a write transaction, the RSVP service first seeds the Redis counter from the database on a cold key before inserting the new row. This ensures the write-through increment lands on the correct base. The new RSVP row and outbox event are then committed to PostgreSQL before incrementing the Redis counter. If the database commit fails, the Redis write never runs, avoiding phantom counts. The Redis client is also configured with socket connection timeouts so that if Redis becomes unreachable (for example, during cache failover), the client raises an error quickly. The API then degrades gracefully by falling back to the database count instead of hanging the event loop.
+
+To manage the database connection pool under heavy concurrent traffic, the SQLAlchemy client bounds maximum connections using pool sizes and overflow configurations. It also uses pre-ping checks to discard stale connections. Execution timeouts on both the client and server side ensure that slow queries cannot pin pooled connections indefinitely under load.
+
+Additionally, while cache drift can occur due to restarts or evictions, it is corrected by a periodic reconciliation task. This task uses non-blocking Redis key scans (\texttt{SCAN}) instead of blocking lookups to protect concurrent performance while overwriting drifted values with the PostgreSQL truth.
+
+\subsection{Critique 4: Interoperability -- iCal Export}
+For interoperability, users must be able to sync events with external calendars like Google Calendar, Outlook, and Apple Calendar. This is achieved by generating calendar feeds that follow the RFC 5545 standard, which guarantees compatibility without custom code for each provider \cite{icalendar_resources}. These feeds are generated dynamically in memory, saving the system from storing static files on disk. Users can subscribe to updates using the \texttt{webcal://} protocol with tokenized URLs, allowing external calendar apps to pull updates automatically.
+
+The implementation maps events into standard properties like calendar scale, method, starts/ends times, and geo coordinates. To secure these feeds, tokens are generated using cryptographically secure strings. The API supports token rotation, allowing users to revoke old tokens and generate new ones, immediately invalidating leaked URLs. The feed generation also enforces strict authorization: if a user is subscribed to a club-only event but is subsequently removed from that club, the feed query checks their membership status and dynamically filters out the restricted events. These read-only feed queries are executed against the read replica database session to prevent heavy join operations from impacting primary write transactions.
+
+The trade-off is that this integration is strictly read-only, so users cannot edit events or RSVP directly from their calendar apps. Also, the system cannot control when the external calendar updates; they pull data on their own schedules, which can cause delays.
+
+\subsection{Critique 5: Notification Worker \& Database-Free Constraints}
+The notification worker is designed as a stateless, database-free AWS Lambda function. By avoiding database connections and VPC network configuration, the Lambda worker can scale rapidly without connection-pool exhaustion, resolving a common bottleneck when fanning out hundreds of concurrent notifications. However, this statelessness imposes constraints on handling delivery failures. 
+
+If a push notification endpoint returns a \texttt{410 Gone} error (indicating the subscription has expired), the database-free worker cannot delete the stale row directly. Instead, it logs the expiration, leaving active database pruning as a potential improvement to be considered for a future version, such as through a secure API callback or SQS event. 
+
+For delivery failures, the worker runs email and push tasks concurrently. If a transient error occurs (like a provider network timeout), the worker raises an exception. The Lambda handler then reports the failed record to SQS via \texttt{batchItemFailures}. SQS handles retrying the message, ensuring at-least-once delivery. A trade-off is that retries can lead to duplicate notifications on successful channels (e.g. an email is sent twice because a push notification failed on the first try), which is accepted to prevent permanent message loss.
+
+
+\subsection{Critique 6: Security and Privacy}
+In the idealised deployment, all external communication is encrypted via HTTPS on both the public API and the CDN-served frontend. However, due to AWS Academy Learner Lab permission restrictions preventing CloudFront provisioning, the system is deployed using a public S3 static website hosting the frontend and a public ALB serving the API, both operating over unencrypted HTTP (ADR-0020). 
+
+The trade-off of this temporary deployment model is that user credentials, authentication tokens, and sensitive event details are transmitted in clear text, exposing the system to eavesdropping and man-in-the-middle attacks. Additionally, the S3 bucket must remain publicly readable. While acceptable for a sandbox environment, this security gap is mitigated in the idealised architecture by setting \texttt{enable\_frontend = true} in Terraform, which provisions a CloudFront distribution with HTTPS, and configuring an ACM SSL certificate with an HTTPS listener on the ALB.

@@ -1,0 +1,24 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Secrets / local config - never commit
+terraform.tfvars
+*.auto.tfvars
+backend.hcl
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Defensive: AWS credentials live in ~/.aws/ (outside the repo). This block only
+# matters if one is ever copied in by accident - keep it untrackable.
+credentials
+.aws/
+**/.aws/
+aws_credentials*
+*.pem

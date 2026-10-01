@@ -1,0 +1,8 @@
+% ---------------------------------------------------------------
+% Abstract
+% One-paragraph summary of the project, the chosen architecture,
+% and the headline evaluation results.
+% ---------------------------------------------------------------
+\begin{abstract}
+\textit{This report presents the architectural design, implementation, and evaluation of TicketTailor, a web-based event management and RSVP platform designed to handle high-concurrency traffic spikes. To balance database consistency with low-latency responsiveness, a modular monolith backend was designed to separate core business domains into decoupled schemas. This is backed by a Redis caching layer for atomic RSVP counters and a PostGIS geospatial search engine. Additionally, resource-heavy background tasks (email and web-push notifications) are isolated using a transactional outbox pattern and an asynchronous, serverless worker. To validate the architecture, a test suite was implemented, ranging from unit tests and contract fuzzing to browser-driven end-to-end tests and load tests on AWS. The evaluation demonstrates that the architecture scales successfully under peak traffic and maintains strict data integrity during concurrent spikes, proving that the modular monolith and serverless notification engine design provides a robust, reliable, and production-ready foundation for the platform's requirements.}
+\end{abstract}

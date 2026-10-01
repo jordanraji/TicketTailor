@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 1: Outbox Pattern Overview
+#  ADR-0006: Transactional outbox + async fan-out
+#  ADR-0010: Visibility transition folded into relay
+#  ASR: Reliability, Scalability
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-01: Outbox Pattern Overview" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants (declared at top level) ─────────────────────────
+
+spa: "Next.js SPA" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+api: "Backend API" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+postgres: "PostgreSQL" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+relay: "Outbox Relay" {
+  style.fill: "#ffe6cc"
+  style.stroke: "#d79b00"
+}
+sns: "SNS" {
+  style.fill: "#f8cecc"
+  style.stroke: "#b85450"
+}
+sqs: "SQS" {
+  style.fill: "#f8cecc"
+  style.stroke: "#b85450"
+}
+worker: "Notification Worker\n(Lambda)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+email_provider: "Resend\n[External]" {
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+}
+push: "Web Push Provider\n[External]" {
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+}
+
+# ── Notes ────────────────────────────────────────────────────────
+
+postgres.outbox_note: "outbox table:\nid, event_type, aggregate_id,\npayload, published_at (NULL = unpublished)"
+
+relay.skip_note: "FOR UPDATE SKIP LOCKED\nenables safe concurrent relay replicas"
+
+# ── Part A: API-initiated flow ────────────────────────────────────
+
+part_a: "A - API-Initiated Flow (e.g. RSVP placed)" {
+  spa.req -> api.handle: "1. POST /events/{id}/rsvp"
+  api.handle -> postgres.txn: "2. BEGIN TRANSACTION"
+  api.handle -> postgres.txn: "3. INSERT INTO rsvps\n   INSERT INTO outbox(rsvp.placed)"
+  postgres.txn -> api.handle: "4. COMMIT - both rows atomic"
+  api.handle -> spa.req: "5. 200 OK"
+}
+
+# ── Part B: Relay tick ────────────────────────────────────────────
+
+part_b: "B - Relay Tick (every few seconds)" {
+  relay.tick -> postgres.flip: "6. UPDATE events SET visibility='public'\n   WHERE transition_at <= now()\n   + INSERT INTO outbox(visibility_changed)\n   [single transaction]"
+  postgres.flip -> relay.tick: "7. COMMIT"
+  relay.tick -> postgres.publish: "8. SELECT outbox WHERE published_at IS NULL\n   FOR UPDATE SKIP LOCKED"
+  postgres.publish -> relay.tick: "9. unpublished rows"
+  relay.tick -> sns.fanout: "10. Publish each domain event"
+  relay.tick -> postgres.publish: "11. UPDATE outbox SET published_at = now()"
+  sns.fanout -> sqs.queue: "12. Fan-out copy"
+  sqs.queue -> worker.notify: "13. Event Source Mapping triggers Lambda"
+  worker.notify -> email_provider.send: "14. Send email notification [HTTPS]"
+  email_provider.send -> worker.notify: "15. Email accepted" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+  worker.notify -> push.deliver: "16. Send web push notification [Web Push API]"
+  push.deliver -> worker.notify: "17. Push accepted" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+}

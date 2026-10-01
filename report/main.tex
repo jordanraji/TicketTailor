@@ -1,0 +1,139 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------
+% Packages
+% ---------------------------------------------------------------
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{pdflscape}
+\usepackage{float}
+
+
+% ---------------------------------------------------------------
+% Color palette (UQ brand)
+% ---------------------------------------------------------------
+\definecolor{uqpurple}{RGB}{81,36,122}
+
+% ---------------------------------------------------------------
+% Header / Footer (applied to all pages except title)
+% ---------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{uqpurple}{\small Ticket Tailor — Architecture \& Evaluation Report}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{uqpurple}\leaders\hrule height \headrulewidth\hfill}}
+
+% ---------------------------------------------------------------
+% Hyperref config
+% ---------------------------------------------------------------
+\hypersetup{
+  colorlinks = true,
+  linkcolor  = uqpurple,
+  urlcolor   = uqpurple,
+  citecolor  = uqpurple,
+}
+
+% ---------------------------------------------------------------
+% Title page metadata — edit these fields
+% ---------------------------------------------------------------
+\newcommand{\reporttitle}{TicketTailor}
+\newcommand{\reportsubtitle}{Architecture and Evaluation Report}
+\newcommand{\coursename}{CSSE6400 — Software Architecture}
+\newcommand{\semester}{Semester 1, 2026}
+
+% ===============================================================
+\input{macro}
+\begin{document}
+% ===============================================================
+
+% ---------------------------------------------------------------
+% Title page
+% ---------------------------------------------------------------
+\begin{titlepage}
+  \centering
+
+  % University logo
+  \includegraphics[width=6cm]{uq-logo.png}\\[2em]
+
+  % Top rule
+  \textcolor{uqpurple}{\rule{\linewidth}{1.5pt}}\\[1.5em]
+
+  % Main title
+  {\fontsize{32}{40}\selectfont\bfseries\color{uqpurple} \reporttitle}\\[0.6em]
+
+  % Subtitle
+  {\Large\color{uqpurple} \reportsubtitle}\\[1em]
+
+  % Bottom rule
+  \textcolor{uqpurple}{\rule{\linewidth}{0.6pt}}\\[2em]
+
+  % Course and semester
+  {\large \coursename}\\[0.3em]
+  {\normalsize \semester}\\[3em]
+
+  % Authors table
+ {\large\bfseries Authors}\\[0.8em]
+  \begin{tabular}{ll}
+    Jordan Lazo Cahua   & s4713085 \\
+    Hani Nursyamira  & s4977217 \\
+    Josephine Lim  & s4730571 \\
+    Irene Ge  & s4985263 \\
+    Daniel Cottrell  & s4699165 \\
+  \end{tabular}
+
+  % Date pinned to bottom
+  \vfill
+  {\normalsize \today}
+
+\end{titlepage}
+
+% ---------------------------------------------------------------
+% Abstract
+% ---------------------------------------------------------------
+\input{sections/abstract}
+\newpage
+
+% ---------------------------------------------------------------
+% Table of Contents
+% ---------------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ---------------------------------------------------------------
+% Sections
+% ---------------------------------------------------------------
+\input{sections/changes}
+\blankremainder
+\input{sections/options}
+\blankremainder
+\input{sections/architecture}
+\blankremainder
+\input{sections/tradeoffs}
+\blankremainder
+\input{sections/critique}
+\blankremainder
+\input{sections/evaluation}
+\blankremainder
+\input{sections/reflection}
+\blankremainder
+
+% ---------------------------------------------------------------
+% References
+% ---------------------------------------------------------------
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\clearpage
+
+\appendix
+\input{sections/appendix}
+
+\input{sections/ai}
+
+\end{document}

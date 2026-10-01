@@ -1,0 +1,228 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - C4 Level 2: Container Diagram
+#  Shows all containers (applications, data stores, processes)
+#  that make up the TicketTailor system.
+#  NOTE: The Backend API is ONE container here (modular monolith).
+#        The internal modules (auth, events, rsvp, etc.) are
+#        Components and belong in Level 3 diagrams.
+# ─────────────────────────────────────────────────────────────────
+
+direction: down
+
+title: TicketTailor - C4 Level 2: Container Diagram {
+  near: top-center
+  shape: text
+  style.font-size: 26
+  style.bold: true
+}
+
+# ─── Actors (outside system boundary) ────────────────────────
+
+student: Student {
+  shape: person
+  label: "Student\n[Person]"
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+
+organiser: "Organiser" {
+  shape: person
+  label: "Organiser\n[Person]"
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+
+# ─── System Boundary ─────────────────────────────────────────
+
+system: "TicketTailor [Software System]" {
+  style.stroke-dash: 5
+  style.fill: transparent
+  style.stroke: "#999999"
+
+  # ── Frontend ──────────────────────────────────────────────
+
+  frontend: Frontend {
+    style.stroke-dash: 3
+    style.fill: transparent
+    style.stroke: "#6c8ebf"
+
+    spa: "Next.js SPA" {
+      label: "Next.js SPA\n[Next.js static export, JavaScript]\nServed via S3 + CloudFront CDN.\nInteractive event map, listings,\nRSVP, profile, organiser dashboard."
+      style.fill: "#dae8fc"
+      style.stroke: "#6c8ebf"
+      style.border-radius: 8
+      icon: https://icons.terrastruct.com/dev/react.svg
+    }
+
+    cdn: "S3 + CloudFront" {
+      label: "S3 + CloudFront\n[AWS]\nStatic file hosting and\nglobal CDN distribution for the SPA"
+      style.fill: "#dae8fc"
+      style.stroke: "#6c8ebf"
+      style.border-radius: 8
+      icon: https://icons.terrastruct.com/aws/Networking%20&%20Content%20Delivery/Amazon-CloudFront.svg
+    }
+  }
+
+  # ── Backend API - Modular Monolith (single container) ─────
+  # Internally split into modules: auth, users, events, rsvp,
+  # organisers, calendar, outbox writer. See Level 3 for detail.
+
+  api: "Backend API" {
+    label: "Backend API\n[Python / FastAPI - ECS Fargate]\nModular monolith. Six strict internal modules:\nauth · users · events · rsvp · organisers · calendar\n+ in-process outbox writer.\nExposes REST endpoints over HTTPS."
+    style.fill: "#dae8fc"
+    style.stroke: "#6c8ebf"
+    style.border-radius: 8
+    icon: https://icons.terrastruct.com/dev/python.svg
+  }
+
+  # ── Data Layer ────────────────────────────────────────────
+
+  data: "Data Layer" {
+    style.stroke-dash: 3
+    style.fill: transparent
+    style.stroke: "#d6b656"
+
+    postgres: "PostgreSQL + PostGIS" {
+      label: "PostgreSQL + PostGIS\n[AWS RDS]\nPrimary + read replica.\nTables: events, users, rsvps, outbox.\nPostGIS for geospatial queries\n(ST_DWithin radius filter)."
+      shape: cylinder
+      style.fill: "#fff2cc"
+      style.stroke: "#d6b656"
+      icon: https://icons.terrastruct.com/dev/postgresql.svg
+    }
+
+    redis: "Redis" {
+      label: "Redis\n[AWS ElastiCache]\nAtomic RSVP counters (INCR/DECR),\nGeo-query result cache (TTL 30s).\nRSVP idempotency is the DB unique\nconstraint; SET-NX gate deferred (ADR-0005)"
+      shape: cylinder
+      style.fill: "#fff2cc"
+      style.stroke: "#d6b656"
+      icon: https://icons.terrastruct.com/dev/redis.svg
+    }
+
+    s3_store: "S3" {
+      label: "S3\n[AWS S3]\nEvent image attachments."
+      shape: cylinder
+      style.fill: "#fff2cc"
+      style.stroke: "#d6b656"
+      icon: https://icons.terrastruct.com/aws/Storage/Amazon-Simple-Storage-Service-S3.svg
+    }
+  }
+
+  # ── Messaging & Event Bus ─────────────────────────────────
+
+  messaging: "Messaging & Relay" {
+    style.stroke-dash: 3
+    style.fill: transparent
+    style.stroke: "#b85450"
+
+    outbox_relay: "Outbox Relay" {
+      label: "Outbox Relay\n[Python / asyncio - ECS Fargate]\nEach tick (1) flips club-only events whose\ntransition_at has passed and writes\nvisibility_changed to the outbox, then\n(2) fans notification events out to one\nhydrated message per recipient and\npublishes them to SNS (ADR-0016).\nMulti-replica safe (FOR UPDATE SKIP LOCKED)."
+      style.fill: "#f8cecc"
+      style.stroke: "#b85450"
+      style.border-radius: 8
+      icon: https://icons.terrastruct.com/dev/python.svg
+    }
+
+    sns: "SNS Topic" {
+      label: "SNS Topic\n[AWS SNS]\nFan-out hub for all domain events\nto multiple independent SQS queues"
+      shape: queue
+      style.fill: "#f8cecc"
+      style.stroke: "#b85450"
+      icon: https://icons.terrastruct.com/aws/Application%20Integration/Amazon-Simple-Notification-Service-SNS.svg
+    }
+
+    sqs_notif: "SQS - Notifications" {
+      label: "SQS - Notifications\n[AWS SQS]\nAt-least-once delivery queue\nconsumed by the Notification Worker"
+      shape: queue
+      style.fill: "#f8cecc"
+      style.stroke: "#b85450"
+      icon: https://icons.terrastruct.com/aws/Application%20Integration/Amazon-Simple-Queue-Service-SQS.svg
+    }
+  }
+
+  # ── Background Workers ────────────────────────────────────
+
+  workers: "Background Workers" {
+    style.stroke-dash: 3
+    style.fill: transparent
+    style.stroke: "#6c8ebf"
+
+    notif_worker: "Notification Worker" {
+      label: "Notification Worker\n[Python - AWS Lambda]\nTriggered by SQS Event Source Mapping.\nDelivers transactional emails via Resend\nand web push notifications via VAPID.\nAWS manages polling and message deletion."
+      style.fill: "#dae8fc"
+      style.stroke: "#6c8ebf"
+      style.border-radius: 8
+      icon: https://icons.terrastruct.com/aws/Compute/AWS-Lambda.svg
+    }
+  }
+}
+
+# ─── External Systems ─────────────────────────────────────────
+
+email_provider: "Resend" {
+  label: "Resend\n[External System]\nTransactional email delivery.\nMailpit substitutes locally and in CI."
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+}
+
+calendar_ext: "External Calendar Platforms" {
+  label: "Google / Outlook / Apple Calendar\n[External System]\nPull iCal feeds via token-bearing\nwebcal:// URLs [RFC 5545]"
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+  icon: https://icons.terrastruct.com/essentials%2F273-calendar.svg
+}
+
+push_provider: "Web Push Provider" {
+  label: "Web Push Provider\n[External System]\nDelivers web push notifications\nto subscriber browsers"
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+  icon: https://icons.terrastruct.com/essentials%2F213-alarm.svg
+}
+
+map_tiles: "OpenStreetMap" {
+  label: "OpenStreetMap\n[External System]\nRaster basemap tiles for the\ngeo-filtered event map (FR2, ADR-0019)."
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+}
+
+# ─── Relationships ────────────────────────────────────────────
+
+# Actors → Frontend
+student -> system.frontend.spa: "Uses [Browser / HTTPS]"
+organiser -> system.frontend.spa: "Manages events [Browser / HTTPS]"
+
+# Frontend internal
+system.frontend.spa -> system.frontend.cdn: "Served from [S3 origin]"
+
+# Frontend → Backend API
+system.frontend.spa -> system.api: "REST API calls [HTTPS / JSON]"
+
+# Frontend → map tiles (loaded client-side by MapLibre GL JS, ADR-0019)
+system.frontend.spa -> map_tiles: "Fetches basemap tiles [HTTPS]"
+
+# Backend API → Data Layer
+system.api -> system.data.postgres: "Reads/Writes data [asyncpg]"
+system.api -> system.data.redis: "Atomic attendee counters & geo-query cache [aioredis]"
+system.api -> system.data.s3_store: "Stores event image attachments [boto3]"
+
+# External calendar platforms pull iCal feeds from the API (pull model - RFC 5545)
+calendar_ext -> system.api: "Pulls iCal feed via token-bearing\nwebcal:// URL [HTTP / RFC 5545]"
+
+# Outbox Relay (transactional outbox + scheduled transition + per-recipient fan-out)
+system.messaging.outbox_relay -> system.data.postgres: "Reads/writes events + outbox; reads users,\nfollows, subscriptions, rsvps to hydrate fan-out\n[asyncpg / FOR UPDATE SKIP LOCKED]"
+system.messaging.outbox_relay -> system.messaging.sns: "Publishes hydrated per-recipient\nnotifications [boto3]"
+
+# SNS fan-out → SQS queues
+system.messaging.sns -> system.messaging.sqs_notif: "Fan-out copy"
+
+# Notification Worker
+system.messaging.sqs_notif -> system.workers.notif_worker: "Triggers via SQS Event Source Mapping\n[AWS managed polling + auto-delete on success]"
+system.workers.notif_worker -> email_provider: "Sends transactional emails [HTTPS / SMTP]"
+system.workers.notif_worker -> push_provider: "Sends web push notifications [Web Push API]"

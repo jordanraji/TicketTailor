@@ -1,0 +1,56 @@
+[project]
+name = "tickettailor-relay"
+version = "0.1.0"
+description = "TicketTailor outbox relay: publishes domain events to the message bus and runs the scheduled FR5 visibility transition (ADR-0006, ADR-0010)."
+readme = "README.md"
+requires-python = ">=3.12"
+# The relay reuses the API's SQLAlchemy models and DB plumbing (the OutboxEvent
+# and Event mappings, PostgreSQLClient, settings) rather than redefining the
+# table shapes - single source of truth for the outbox/events schema. It talks
+# to the same primary store the API writes to.
+dependencies = [
+    "tickettailor",
+]
+
+[project.optional-dependencies]
+# boto3 is only needed by the production SNS publisher; tests and local runs use
+# the in-memory / logging publishers, so it stays out of the base install.
+sns = ["boto3>=1.34.0"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.15",
+    "testcontainers[postgres]>=4.8.0",
+]
+
+[tool.uv.sources]
+tickettailor = { path = "../api", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/relay"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP", "N"]
+ignore = ["B008"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+python_version = "3.12"
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"

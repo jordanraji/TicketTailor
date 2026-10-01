@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - C4 Level 1: System Context Diagram
+#  Shows the system as a black box and its relationships with
+#  users and external systems.
+# ─────────────────────────────────────────────────────────────────
+
+direction: right
+
+title: TicketTailor - C4 Level 1: System Context {
+  near: top-center
+  shape: text
+  style.font-size: 26
+  style.bold: true
+}
+
+# ─── Actors ───────────────────────────────────────────────────
+
+student: Student {
+  shape: person
+  label: "Student\n[Person]\nBrowses events, RSVPs,\nfollows university clubs"
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+
+organiser: "Organiser" {
+  shape: person
+  label: "Organiser\n[Person]\nCreates and manages events,\ncontrols club membership"
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+
+# ─── The System ───────────────────────────────────────────────
+
+tickettailor: TicketTailor {
+  label: "TicketTailor\n[Software System]\nUniversity social event and\nclub management platform.\nDiscover events on an interactive\nmap, RSVP, follow clubs, and\nexport events to your calendar."
+  style.fill: "#1168bd"
+  style.font-color: "#ffffff"
+  style.stroke: "#0b4884"
+  style.border-radius: 8
+}
+
+# ─── External Systems ─────────────────────────────────────────
+
+email_provider: "Resend" {
+  label: "Resend\n[External System]\nTransactional email delivery\nfor event notifications and alerts.\nMailpit substitutes locally and in CI."
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+}
+
+calendar_ext: "External Calendar Platforms" {
+  label: "Google / Outlook / Apple Calendar\n[External System]\nThird-party calendar platforms\nthat subscribe to and consume\nexported iCal feeds (webcal:// URLs)"
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+  icon: https://icons.terrastruct.com/essentials%2F273-calendar.svg
+}
+
+push_provider: "Web Push Provider" {
+  label: "Web Push Provider\n[External System]\nDelivers web push notifications\nto student browsers"
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+  icon: https://icons.terrastruct.com/essentials%2F213-alarm.svg
+}
+
+map_tiles: "OpenStreetMap" {
+  label: "OpenStreetMap\n[External System]\nServes raster basemap tiles\nfor the geo-filtered event map (FR2).\nLoaded directly by the student's\nbrowser via MapLibre GL JS (ADR-0019)."
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+  style.stroke-dash: 5
+  style.border-radius: 8
+}
+
+# ─── Relationships ────────────────────────────────────────────
+
+student -> tickettailor: "Browses events, RSVPs,\nfollows clubs [HTTPS]"
+organiser -> tickettailor: "Creates and manages events,\nmanages club membership [HTTPS]"
+tickettailor -> email_provider: "Sends notification emails\n[HTTPS / SMTP]"
+calendar_ext -> tickettailor: "Subscribes to and consumes\niCal feeds via token-bearing\nwebcal:// URLs [RFC 5545]"
+tickettailor -> push_provider: "Sends web push notifications\n[Web Push API]"
+tickettailor -> map_tiles: "Fetches basemap tiles for the\nevent map [HTTPS]"

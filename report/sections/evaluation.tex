@@ -1,0 +1,62 @@
+% ---------------------------------------------------------------
+% Evaluation
+% Test results vs. each quality attribute. Link to test plans /
+% scripts in the repository. Manual tests must be reproducible.
+% ---------------------------------------------------------------
+
+\section{Evaluation}
+\label{sec:evaluation}
+
+This section evaluates how well the implemented TicketTailor architecture supports the project's key functional requirements and architecturally significant requirements (ASRs). The evaluation combines automated test suites, deployed AWS load testing, calendar interoperability checks, browser-driven end-to-end tests, and security-oriented static analysis. The main ASRs evaluated are scalability, reliability, interoperability, and security/privacy.
+
+\subsection{Evaluation Approach}
+
+The system was evaluated at multiple levels. Automated backend tests were used to verify the correctness of authentication, users, organisers, events, RSVP, calendar export, validation, and health-check behaviour. Separate relay and worker tests were used to validate the asynchronous notification pipeline. Browser-driven Playwright end-to-end tests were included for the map UI and the AR3 happy path, and the traceability matrix records these tests as passing. Load tests were used to evaluate the deployed architecture under more realistic traffic conditions.
+
+The Python components were evaluated with formatting, linting, type checking, import-boundary checks, Bandit static security analysis, and automated pytest suites. These checks passed locally for the API, relay, and worker components, with the API test suite passing 119 tests and 32 Schemathesis subtests. The API, relay, worker, web, and security workflows also passed on the final main branch, providing CI evidence for backend checks, asynchronous components, frontend build quality, and security scanning. The supporting test code is available in the project repository. API tests are located in the API module test folders, while relay tests, worker tests, browser-driven end-to-end tests, and load-test scenarios are stored in the repository's relay, worker, e2e, and load-test directories. The main recorded test reports are stored under \texttt{docs/test-reports}. Local API tests can be run from the \texttt{api} directory using \texttt{uv run pytest -vv}, while project quality checks are run through the configured pre-commit hooks.
+
+The main load evaluation was run against the deployed AWS stack in \texttt{us-east-1}. The deployed environment used an ECS Fargate API behind an Application Load Balancer, autoscaling between 2 and 10 tasks, an RDS PostgreSQL primary with read replica, ElastiCache Redis, and an SNS--SQS--Lambda notification worker pipeline. Because the k6 harness was run from Australia against \texttt{us-east-1}, client-observed latency was affected by trans-Pacific network latency. For this reason, the report uses server-side API latency logs and worker CloudWatch acknowledgement timestamps as the meaningful performance measures.
+
+\subsection{Functional Correctness}
+
+The automated API tests cover the main MVP workflows. Authentication tests verify registration, login, token refresh, logout, and protected profile access. User and organiser tests verify profile management, club creation, membership management, following clubs, and role-based permissions. Event tests cover creation, retrieval, listing, updating, deletion, visibility behaviour, public browsing, geospatial search, cursor pagination, input validation, and authorisation. RSVP tests cover placement, cancellation, privacy checks for club-only events, Redis-backed counter behaviour, failover behaviour, and reliability of the outbox path. Calendar tests verify token flow and iCalendar output.
+
+These tests show that the implemented backend supports the core functional requirements of the MVP. The Schemathesis tests also provide contract-style evidence that malformed or unexpected API inputs do not cause server errors. Together, the tests show that major features are not implemented as isolated endpoints only, but are integrated across modules through the service and repository layers.
+
+\subsection{Scalability Evaluation}
+
+Scalability was evaluated using deployed load-test scenarios for map traffic, RSVP traffic, and visibility-transition fan-out. The \verb|map_traffic| scenario generated approximately 48 requests per second for eight minutes, producing 24,052 requests with 0 errors. During this run, the API autoscaled from a cold 2-task baseline up to 9 running tasks. Server-side geo-query p99 latency initially spiked while the 2-task baseline was saturated, but recovered as new tasks came online. Once the service settled, p99 latency reached approximately 136--202 ms, satisfying the 500 ms p99 target for the geo-search path.
+
+The \verb|sustained_rsvp| scenario produced 12405 RSVP toggles with 0 errors. Server-side latency was strong at the median and p95 levels, with p50 at 17 ms and p95 at 51 ms. However, the p99 result was 410 ms, which exceeded the stricter 200 ms write-path SLO. This means RSVP correctness and availability under load were achieved, but the tail latency of the primary database write path remains a limitation. The result is still useful architecturally because it shows that the Redis counter and database-backed RSVP path maintained correctness under load, while also identifying where future optimisation should focus.
+
+The \verb|visibility_spike| scenario tested the system's ability to handle a club-only event becoming public and notifying followers. With 300 followers, the system delivered 300 out of 300 notifications, with acknowledgement p95 of 5.1 seconds and p99 of 5.3 seconds. The dead-letter queue remained empty. This satisfies the fan-out SLO and supports the claim that asynchronous notification processing can absorb bursty work without blocking the main API.
+
+\subsection{Reliability Evaluation}
+
+Reliability is supported by transactional writes, the transactional outbox pattern, Redis-backed counters, and asynchronous delivery with retry support. Automated tests verify that RSVP actions and event changes create the required outbox records. The relay and worker tests further validate that outbox events can be processed and delivered through the notification pipeline.
+
+The deployed load test also provides reliability evidence. Across the sustained map and RSVP scenarios, the report recorded a 0\% error rate. The fan-out test delivered all notifications and left the dead-letter queue empty. This supports the architecture's reliability claim: user-facing API operations can complete without directly depending on notification delivery, while notification work remains durable and recoverable through the outbox and queue-based pipeline.
+
+The evaluation also confirmed several deployment fixes under real AWS conditions. The worker handled an empty Resend key by falling back to logging, worker acknowledgement logs reached CloudWatch, request-count autoscaling operated in both directions, and the SNS--SQS--Lambda fan-out path delivered without loss.
+
+\subsection{Interoperability Evaluation}
+
+Interoperability was evaluated through the calendar export functionality. The calendar module generates iCalendar-compatible output so that events can be imported into external calendar platforms. Automated iCalendar conformance tests verify that generated calendar data follows expected formatting rules, while the manual calendar round-trip test confirmed that a generated event could be imported into Google Calendar with the expected title and time.
+
+This provides evidence that the architecture supports interoperability through a standard format rather than a provider-specific integration. However, the evaluation is strongest for the tested Google Calendar path and automated RFC 5545 conformance. Broader manual testing across Outlook and Apple Calendar would provide stronger evidence for cross-platform behaviour.
+
+\subsection{Security and Privacy Evaluation}
+
+Security and privacy were evaluated through authentication tests, role-based authorisation tests, input validation tests, static analysis, and project security workflows. Authentication tests verify that protected endpoints reject unauthenticated users and invalid tokens. Organiser and event tests verify that users without the correct club role cannot perform restricted actions. Validation tests check that invalid or unsafe text input is rejected before it reaches sensitive parts of the system.
+
+The architecture also includes privacy-specific behaviour for public event browsing. Public event coordinates are rounded before being returned, reducing the precision of location data while still allowing map-based discovery. Club-only events are filtered so that users who are not members of the relevant club cannot access restricted event information. These behaviours support the project's privacy and security goals in addition to the broader authentication and authorisation checks.
+
+\subsection{Limitations}
+
+The evaluation demonstrates that the architecture supports the MVP and its most important quality attributes, but there are still limitations. First, the load harness was run from Australia against a \texttt{us-east-1} deployment, so client-observed latency was affected by network distance. The server-side metrics are therefore the correct measure for evaluating the system itself, but an in-region load harness would provide cleaner end-to-end client latency data.
+
+Second, the RSVP write-path p99 latency reached 410 ms under sustained load, exceeding the 200 ms SLO. This suggests that the primary database write path is the main bottleneck for the RSVP workflow. Potential improvements include increasing the primary database size, tuning API connection pools, or revisiting the strictness of the write-path SLO.
+
+Third, organiser edit notification fan-out was not separately timed. The architecture uses the same relay, queue, and worker pipeline as the validated visibility fan-out scenario, but a separate organiser-edit load test would provide stronger evidence for that specific functional requirement.
+
+Overall, the evaluation shows that the selected modular monolith with selective event-driven components is suitable for the MVP. The system scales for read-heavy map traffic, reliably delivers asynchronous fan-out notifications, supports standard calendar interoperability, and maintains security and privacy controls. The main area for future improvement is RSVP tail latency under sustained write load.

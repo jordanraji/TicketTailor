@@ -1,0 +1,152 @@
+// TicketTailor - MVP Schema (dbdiagram.io)
+
+// ENUMS
+
+Enum user_role {
+  student
+  committee_member
+  admin
+}
+
+Enum event_visibility {
+  club_only
+  public
+}
+
+Enum membership_role {
+  committee_member
+  admin
+}
+
+Enum outbox_event_type {
+  event_created
+  event_updated
+  rsvp_placed
+  rsvp_cancelled
+  visibility_changed
+  club_membership_changed
+}
+
+// TABLES
+
+Table users {
+  id            uuid      [pk]
+  email         varchar   [unique, not null]
+  password_hash varchar   [not null, note: 'argon2id - ADR-0009']
+  display_name  varchar   [not null]
+  role          user_role [not null, default: 'student']
+  deleted_at    timestamp [note: 'soft delete - ADR-0009']
+  created_at    timestamp [not null]
+}
+
+Table refresh_tokens {
+  id         uuid      [pk]
+  user_id    uuid      [not null, ref: > users.id]
+  token_hash varchar   [unique, not null]
+  expires_at timestamp [not null]
+  revoked_at timestamp
+  created_at timestamp [not null]
+}
+
+Table clubs {
+  id          uuid      [pk]
+  name        varchar   [unique, not null]
+  description text
+  created_at  timestamp [not null]
+}
+
+Table club_memberships {
+  id         uuid            [pk]
+  user_id    uuid            [not null, ref: > users.id]
+  club_id    uuid            [not null, ref: > clubs.id]
+  role       membership_role [not null]
+  created_at timestamp       [not null]
+
+  // INDEXES
+  indexes {
+    (user_id, club_id) [unique]
+  }
+}
+
+Table club_follows {
+  id         uuid      [pk]
+  user_id    uuid      [not null, ref: > users.id]
+  club_id    uuid      [not null, ref: > clubs.id]
+  created_at timestamp [not null]
+
+  // INDEXES
+  indexes {
+    (user_id, club_id) [unique]
+    club_id [name: 'ix_club_follows_club_id', note: 'performance index for relay fan-out - ADR-0016']
+  }
+}
+
+Table events {
+  id            uuid             [pk]
+  club_id       uuid             [not null, ref: > clubs.id]
+  created_by    uuid             [not null, ref: > users.id]
+  title         varchar          [not null]
+  location      geography        [not null, note: 'geography(Point,4326) - PostGIS. GiST index enables ST_DWithin radius queries (ADR-0008). API accepts/returns lat+lng decimals via Pydantic.']
+  category      varchar          [note: 'additive search category - FR2']
+  starts_at     timestamp        [not null]
+  is_free       boolean          [not null, default: true]
+  price         decimal
+  visibility    event_visibility [not null, default: 'club_only']
+  transition_at timestamp        [note: 'scheduled flip to public - FR5, ADR-0010']
+  image_s3_key  varchar
+  created_at    timestamp        [not null]
+  updated_at    timestamp        [not null]
+
+  // INDEXES
+  indexes {
+    location [type: gist, name: 'idx_events_location', note: 'spatial index for ST_DWithin - ADR-0008']
+  }
+}
+
+Table rsvps {
+  id         uuid      [pk]
+  user_id    uuid      [not null, ref: > users.id]
+  event_id   uuid      [not null, ref: > events.id]
+  created_at timestamp [not null]
+
+  // INDEXES
+  indexes {
+    (user_id, event_id) [unique, note: 'idempotency guarantee - ADR-0005']
+  }
+}
+
+Table calendar_tokens {
+  id         uuid      [pk]
+  user_id    uuid      [not null, ref: > users.id]
+  token      varchar   [unique, not null, note: 'webcal:// token - ADR-0007']
+  revoked_at timestamp
+  created_at timestamp [not null]
+}
+
+Table push_subscriptions {
+  id         uuid      [pk]
+  user_id    uuid      [not null, ref: > users.id]
+  endpoint   varchar   [not null, note: 'browser-supplied push endpoint URL']
+  p256dh     varchar   [not null, note: 'browser public key for payload encryption - ADR-0011']
+  auth       varchar   [not null, note: 'browser auth secret for payload encryption - ADR-0011']
+  created_at timestamp [not null]
+
+  // INDEXES
+  indexes {
+    (user_id, endpoint) [unique, note: 'one subscription per browser per user - worker deletes on 410 Gone']
+  }
+}
+
+Table outbox {
+  id           uuid              [pk]
+  aggregate_id uuid              [not null]
+  event_type   outbox_event_type [not null]
+  payload      jsonb             [not null]
+  published_at timestamp         [note: 'null = pending - ADR-0006']
+  created_at   timestamp         [not null]
+
+  // INDEXES
+  indexes {
+    (published_at, created_at) [name: 'idx_outbox_unpublished', note: 'relay query: WHERE published_at IS NULL ORDER BY created_at']
+  }
+}

@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────
+#  TicketTailor - Sequence Diagram 6: Calendar Export
+#  ADR-0007: iCal export by default (RFC 5545)
+#  ADR-0008: Read replica routing
+#  ASR: Interoperability
+# ─────────────────────────────────────────────────────────────────
+
+shape: sequence_diagram
+
+title: "SD-06: Calendar Export (iCal / RFC 5545)" {
+  near: top-center
+  shape: text
+  style.font-size: 24
+  style.bold: true
+}
+
+# ── Participants ──────────────────────────────────────────────────
+
+user: "Student" {
+  shape: person
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+spa: "Next.js SPA" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+api: "Backend API\n(Calendar Module)" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+replica: "PostgreSQL\n(read replica)" {
+  style.fill: "#fff2cc"
+  style.stroke: "#d6b656"
+}
+organisers: "Organisers Module\n[in-process]" {
+  style.fill: "#dae8fc"
+  style.stroke: "#6c8ebf"
+}
+ext: "Google / Outlook\n/ Apple Calendar" {
+  style.fill: "#f5f5f5"
+  style.stroke: "#666666"
+}
+
+# ── Notes ─────────────────────────────────────────────────────────
+
+api.ical_note: "RFC 5545 fields:\nSUMMARY → title\nDTSTART / DTEND → times\nLOCATION → lat,lng\nDESCRIPTION → details\nGenerated in memory - no S3 (ADR-0007)"
+
+ext.compat_note: "Tested against Google Calendar,\nOutlook, and Apple Calendar\n(Interoperability ASR)"
+
+# ── Flow ──────────────────────────────────────────────────────────
+
+user -> spa.ui: "1. Click 'Add to Calendar'"
+spa.ui -> api.generate: "2. GET /events/{id}/calendar.ics\n   Authorization: Bearer <JWT>"
+api.generate -> api.generate: "3. Check event visibility"
+authz: "[club-only event] Verify membership" {
+  api.generate -> organisers.check: "3a. is_member_of(user_id, club_id)\n    [ADR-0009: events module never\n    reaches into organiser data directly]"
+  organisers.check -> api.generate: "3b. true / false" {
+    style.stroke: "#888780"
+    style.stroke-dash: 4
+  }
+}
+api.generate -> replica.query: "4. SELECT title, description,\n   lat, lng, starts_at, ends_at\n   FROM events WHERE id = :id"
+replica.query -> api.generate: "5. event row"
+api.generate -> api.generate: "6. Build RFC 5545 .ics in memory"
+api.generate -> spa.ui: "7. 200 OK\n   Content-Type: text/calendar\n   Content-Disposition: attachment;\n     filename=event.ics"
+spa.ui -> user: "8. Browser downloads .ics"
+user -> ext.import: "9. Open / import .ics file\n   (or subscribe webcal:// token URL)"
+ext.import -> ext.import: "10. Parse RFC 5545 fields"
+ext.import -> user: "11. Event added to calendar"
